@@ -239,6 +239,9 @@ void bloomFilterIndexValidator(const IndexDescription & index, bool attach);
 MergeTreeIndexPtr hypothesisIndexCreator(const IndexDescription & index);
 void hypothesisIndexValidator(const IndexDescription & index, bool attach);
 
+MergeTreeIndexPtr succinctRangeFilterIndexCreator(const IndexDescription & index);
+void succinctRangeFilterIndexValidator(const IndexDescription & index, bool attach);
+
 #if USE_USEARCH
 MergeTreeIndexPtr vectorSimilarityIndexCreator(const IndexDescription & index);
 void vectorSimilarityIndexValidator(const IndexDescription & index, bool attach);

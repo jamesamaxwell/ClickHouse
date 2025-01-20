@@ -127,6 +127,9 @@ MergeTreeIndexFactory::MergeTreeIndexFactory()
     registerCreator("hypothesis", hypothesisIndexCreator);
 
     registerValidator("hypothesis", hypothesisIndexValidator);
+    
+    registerCreator("surf", succinctRangeFilterIndexCreator);
+    registerValidator("surf", succinctRangeFilterIndexValidator);
 
 #if USE_USEARCH
     registerCreator("vector_similarity", vectorSimilarityIndexCreator);
