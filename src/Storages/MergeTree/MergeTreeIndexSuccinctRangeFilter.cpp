@@ -1,4 +1,4 @@
-#include "MergeTreeIndexSuccinctRangeFilter.h"
+#include <Storages/MergeTree/MergeTreeIndexSuccinctRangeFilter.h>
 
 #include <Columns/ColumnArray.h>
 #include <Columns/ColumnConst.h>
@@ -31,6 +31,8 @@
 #include <Storages/MergeTree/RPNBuilder.h>
 #include <base/types.h>
 
+#include <Common/logger_useful.h>
+
 namespace DB
 {
 
@@ -45,12 +47,10 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
-MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_)
-    : ds_ratio(ds_ratio_)
+MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t index_columns_)
+    : ds_ratio(ds_ratio_), surfs(index_columns_)
 {
     total_rows = 0;
-    for (size_t column = 0; column < index_columns_; ++column)
-        surfs[column] = std::make_shared<SuccinctRangeFilter>(ds_ratio);
 }
 
 bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
@@ -62,20 +62,30 @@ bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ostr) const
 {
-    return;
+    if (!surfs.empty())
+        ostr.write(reinterpret_cast<const char *>(surfs[0]->getFilter().data()), 4);
 }
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version)
 {
-    return;
+    if (version != 1)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
+
+    if (!surfs.empty())
+        istr.readStrict(reinterpret_cast<char *>(surfs[0]->getFilter().data()), 4);
 }
 
 void fillingSuccinctRangeFilter(SuccinctRangeFilterPtr & surf)
 {
-    return;
+    surf->add("test", 5);
 }
 
-MergeTreeIndexConditionSuccinctRangeFilter::MergeTreeIndexConditionSuccinctRangeFilter(const ActionsDAG * filter_actions_dag, ContextPtr context_, const Block & header_)
+MergeTreeIndexConditionSuccinctRangeFilter::MergeTreeIndexConditionSuccinctRangeFilter(
+    const ActionsDAG * filter_actions_dag, 
+    ContextPtr context_, 
+    const Block & header_)
+    : WithContext(context_)
+    , header(header_)
 {
     if (!filter_actions_dag)
     {
@@ -90,10 +100,11 @@ MergeTreeIndexConditionSuccinctRangeFilter::MergeTreeIndexConditionSuccinctRange
     rpn = std::move(builder).extractRPN();
 }
 
+
 bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
 {
     std::vector<bool> rpn_stack;
-    rpn_stack.emplace_back(true, true);
+    rpn_stack.push_back(true);
 
     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ alwaysUnknownOrTrue ------------------------------------------------------ ");
     return rpn_stack[0];
@@ -103,6 +114,11 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
 {
     std::vector<BoolMask> rpn_stack;
     const auto & filters = granule->getFilters();
+    if (!filters.empty())
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "filters not empty");
+    }
+    
 
     for (const auto & element : rpn)
     {
@@ -260,9 +276,10 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
             {
                 if (prepared_set->hasExplicitSetElements())
                 {
-                    const auto prepared_info = getPreparedSetInfo(prepared_set);
-                    if (traverseTreeIn(function_name, lhs_argument, prepared_set, prepared_info.type, prepared_info.column, out))
-                        return true;
+                    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "traverseTreeIn");
+                    // const auto prepared_info = getPreparedSetInfo(prepared_set);
+                    // if (traverseTreeIn(function_name, lhs_argument, prepared_set, prepared_info.type, prepared_info.column, out))
+                    //     return true;
                 }
             }
         }
@@ -305,9 +322,32 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeIn(
     const ColumnPtr & column,
     RPNElement & out)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ traverseTreeIn ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn {} ", function_name);
+    auto key_node_column_name = key_node.getColumnName();
+    if (header.has(key_node_column_name))
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn ");
+    }
+    if (!prepared_set)
+        return false;
+    
+    auto default_column_to_check = type->createColumnConstWithDefaultValue(1)->convertToFullColumnIfConst();
+    ColumnWithTypeAndName default_column_with_type_to_check { default_column_to_check, type, "" };
+    ColumnsWithTypeAndName default_columns_with_type_to_check = {default_column_with_type_to_check};
+    auto set_contains_default_value_predicate_column = prepared_set->execute(default_columns_with_type_to_check, false /*negative*/);
+    const auto & set_contains_default_value_predicate_column_typed = assert_cast<const ColumnUInt8 &>(*set_contains_default_value_predicate_column);
+    bool set_contain_default_value = set_contains_default_value_predicate_column_typed.getData()[0];
+    if (set_contain_default_value)
+        return false;
 
-    return false;
+    size_t row_size = column->size();
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn row size {} ", row_size);
+    out.function = RPNElement::FUNCTION_IN;
+
+    // if (value_field.getType() != Field::Types::Array)
+    //     throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Second argument for function {} must be an array.", function_name);
+
+    return true;
 }
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
@@ -318,8 +358,59 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
     RPNElement & out,
     const RPNBuilderTreeNode * parent)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ traverseTreeEquals ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeEquals ");
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeEquals {} ", function_name);
+    auto key_node_column_name = key_node.getColumnName();
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn column name {} ", key_node_column_name);
+
+    out.function = RPNElement::FUNCTION_HAS;
+    const DataTypePtr actual_type = value_type;
+    auto converted_field = convertFieldToType(value_field, *actual_type, value_type.get());
+    if (converted_field.isNull())
+        return false;
+
+    if (value_field.getType() != Field::Types::Array)
+        throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Second argument for function {} must be an array.", function_name);
+
+    out.function = RPNElement::FUNCTION_IN;
+
+    if (!parent->isFunction())
+        return false;
+
     return true;
+}
+
+MergeTreeIndexSuccinctRangeFilter::MergeTreeIndexSuccinctRangeFilter(
+    const IndexDescription & index_,
+    size_t ds_ratio_)
+    : IMergeTreeIndex(index_)
+    , ds_ratio(ds_ratio_)
+{
+    assert(ds_ratio != 0);
+}
+
+MergeTreeIndexGranulePtr MergeTreeIndexSuccinctRangeFilter::createIndexGranule() const
+{
+    return std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, index.column_names.size());
+}
+
+MergeTreeIndexAggregatorPtr MergeTreeIndexSuccinctRangeFilter::createIndexAggregator(const MergeTreeWriterSettings & /*settings*/) const
+{
+    return std::make_shared<MergeTreeIndexAggregatorSuccinctRangeFilter>(ds_ratio, index.column_names);
+}
+
+MergeTreeIndexConditionPtr MergeTreeIndexSuccinctRangeFilter::createIndexCondition(const ActionsDAG * filter_actions_dag, ContextPtr context) const
+{
+    return std::make_shared<MergeTreeIndexConditionSuccinctRangeFilter>(filter_actions_dag, context, index.sample_block);
+}
+
+void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, size_t * pos, size_t limit)
+{
+    if (*pos >= block.rows())
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "
+                        "Position: {}, Block rows: {}.", *pos, block.rows());
+    
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "update {} {}", pos[0], limit);
 }
 
 MergeTreeIndexAggregatorSuccinctRangeFilter::MergeTreeIndexAggregatorSuccinctRangeFilter(size_t ds_ratio_, const Names & columns_name_)
@@ -335,12 +426,51 @@ bool MergeTreeIndexAggregatorSuccinctRangeFilter::empty() const
 
 MergeTreeIndexGranulePtr MergeTreeIndexAggregatorSuccinctRangeFilter::getGranuleAndReset()
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ getGranuleAndReset ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "getGranuleAndReset");
 
-    const auto granule = std::make_shared<MergeTreeIndexAggregatorSuccinctRangeFilter>(bits_per_row, hash_functions, column_hashes);
+    const auto granule = std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, column_hashes.size());
     total_rows = 0;
     column_hashes.clear();
     return granule;
 }
 
+MergeTreeIndexPtr succinctRangeFilterIndexCreator(
+    const IndexDescription & index)
+{
+    size_t default_ds_ratio = 64;
+
+    if (!index.arguments.empty())
+    {
+        const auto & argument = index.arguments[0];
+        default_ds_ratio = std::min<size_t>(1024, std::max<size_t>(argument.safeGet<size_t>(), 0));
+    }
+
+    return std::make_shared<MergeTreeIndexSuccinctRangeFilter>(
+        index, default_ds_ratio);
 }
+
+void succinctRangeFilterIndexValidator(const IndexDescription & index, bool attach)
+{
+    // assertIndexColumnsType(index.sample_block);
+
+    // if (index.arguments.size() > 1)
+    // {
+    //     if (!attach) /// This is for backward compatibility.
+    //         throw Exception(ErrorCodes::NUMBER_OF_ARGUMENTS_DOESNT_MATCH, "BloomFilter index cannot have more than one parameter.");
+    // }
+
+    // if (!index.arguments.empty())
+    // {
+    //     const auto & argument = index.arguments[0];
+
+    //     if (!attach && (argument.getType() != Field::Types::Float64 || argument.safeGet<Float64>() < 0 || argument.safeGet<Float64>() > 1))
+    //         throw Exception(ErrorCodes::BAD_ARGUMENTS, "The BloomFilter false positive must be a double number between 0 and 1.");
+    // }
+    if (attach)
+        LOG_DEBUG(getLogger("succinctRangeFilterIndexValidator"), "this should be implemented attach {}", index.arguments.size());
+    else
+        LOG_DEBUG(getLogger("succinctRangeFilterIndexValidator"), "this should be implemented not attach {}", index.arguments.size());
+}
+
+}
+

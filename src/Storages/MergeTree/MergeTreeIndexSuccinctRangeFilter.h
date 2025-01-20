@@ -2,7 +2,7 @@
 
 #include <Columns/IColumn.h>
 #include <Common/HashTable/HashSet.h>
-// #include <Interpreters/BloomFilter.h>
+#include <Interpreters/SuccinctRangeFilter.h>
 #include <Storages/MergeTree/KeyCondition.h>
 #include <Storages/MergeTree/MergeTreeIndices.h>
 
@@ -17,7 +17,9 @@ namespace ErrorCodes
 class MergeTreeIndexGranuleSuccinctRangeFilter final : public IMergeTreeIndexGranule
 {
 public:
-    MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio);
+    MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t index_columns_);
+
+    // MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const std::vector<HashSet<UInt64>> & column_hashes);
 
     bool empty() const override;
 
@@ -35,7 +37,7 @@ private:
     void fillingSuccinctRangeFilter(SuccinctRangeFilterPtr & surf) const;
 };
 
-class MergeTreeIndexConditionBloomFilter final : public IMergeTreeIndexCondition, WithContext
+class MergeTreeIndexConditionSuccinctRangeFilter final : public IMergeTreeIndexCondition, WithContext
 {
 public:
     struct RPNElement
@@ -84,7 +86,7 @@ public:
 
 private:
     const Block & header;
-    const size_t hash_functions;
+    // const size_t hash_functions;
     std::vector<RPNElement> rpn;
 
     bool mayBeTrueOnGranule(const MergeTreeIndexGranuleSuccinctRangeFilter * granule) const;
@@ -113,7 +115,7 @@ private:
 class MergeTreeIndexAggregatorSuccinctRangeFilter final : public IMergeTreeIndexAggregator
 {
 public:
-    MergeTreeIndexAggregatorSuccinctRangeFilter(size_t ds_ratio, size_t hash_functions_, const Names & columns_name_);
+    MergeTreeIndexAggregatorSuccinctRangeFilter(size_t ds_ratio, const Names & columns_name_);
 
     bool empty() const override;
 
@@ -135,8 +137,7 @@ class MergeTreeIndexSuccinctRangeFilter final : public IMergeTreeIndex
 public:
     MergeTreeIndexSuccinctRangeFilter(
         const IndexDescription & index_,
-        size_t bits_per_row_,
-        size_t hash_functions_);
+        size_t ds_ratio);
 
     MergeTreeIndexGranulePtr createIndexGranule() const override;
 
