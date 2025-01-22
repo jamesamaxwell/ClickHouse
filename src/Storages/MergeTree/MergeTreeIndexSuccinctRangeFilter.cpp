@@ -50,11 +50,13 @@ namespace ErrorCodes
 MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t index_columns_)
     : ds_ratio(ds_ratio_), surfs(index_columns_)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter");
     total_rows = 0;
 }
 
 bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "empty granule");
     /// One possible definition:
     /// Return true if we haven't added any rows yet, or if no filters exist.
     return (total_rows == 0) || surfs.empty();
@@ -62,12 +64,14 @@ bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ostr) const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "serializeBinary");
     if (!surfs.empty())
         ostr.write(reinterpret_cast<const char *>(surfs[0]->getFilter().data()), 4);
 }
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "deserializeBinary");
     if (version != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
 
@@ -77,6 +81,7 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
 
 void fillingSuccinctRangeFilter(SuccinctRangeFilterPtr & surf)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fillingSuccinctRangeFilter");
     surf->add("test", 5);
 }
 
@@ -87,6 +92,7 @@ MergeTreeIndexConditionSuccinctRangeFilter::MergeTreeIndexConditionSuccinctRange
     : WithContext(context_)
     , header(header_)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexConditionSuccinctRangeFilter");
     if (!filter_actions_dag)
     {
         rpn.push_back(RPNElement::FUNCTION_UNKNOWN);
@@ -106,7 +112,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
     std::vector<bool> rpn_stack;
     rpn_stack.push_back(true);
 
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ alwaysUnknownOrTrue ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "alwaysUnknownOrTrue");
     return rpn_stack[0];
 }
 
@@ -116,7 +122,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
     const auto & filters = granule->getFilters();
     if (!filters.empty())
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "filters not empty");
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "filters not empty");
     }
     
 
@@ -135,7 +141,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
             || element.function == RPNElement::FUNCTION_HAS_ANY
             || element.function == RPNElement::FUNCTION_HAS_ALL)
         {
-            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
             // bool match_rows = true;
             // bool match_all = element.function == RPNElement::FUNCTION_HAS_ALL;
             // const auto & predicate = element.predicate;
@@ -158,13 +164,13 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
         }
         else if (element.function == RPNElement::FUNCTION_NOT)
         {
-            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_NOT ------------------------------------------------------ ");
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_NOT ------------------------------------------------------ ");
 
 //            rpn_stack.back() = !rpn_stack.back();
         }
         else if (element.function == RPNElement::FUNCTION_OR)
         {
-            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_OR ------------------------------------------------------ ");
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_OR ------------------------------------------------------ ");
 
             // auto arg1 = rpn_stack.back();
             // rpn_stack.pop_back();
@@ -173,7 +179,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
         }
         else if (element.function == RPNElement::FUNCTION_AND)
         {
-            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_AND ------------------------------------------------------ ");
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_AND ------------------------------------------------------ ");
 
             // auto arg1 = rpn_stack.back();
             // rpn_stack.pop_back();
@@ -182,13 +188,13 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
         }
         else if (element.function == RPNElement::ALWAYS_TRUE)
         {
-            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_TRUE ------------------------------------------------------ ");
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_TRUE ------------------------------------------------------ ");
 
             // rpn_stack.emplace_back(true, false);
         }
         else if (element.function == RPNElement::ALWAYS_FALSE)
         {
-            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_FALSE ------------------------------------------------------ ");
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_FALSE ------------------------------------------------------ ");
 
             //rpn_stack.emplace_back(false, true);
         }
@@ -204,7 +210,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::extractAtomFromTree(const RPNBuilderTreeNode & node, RPNElement & out)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ extractAtomFromTree ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ extractAtomFromTree ------------------------------------------------------ ");
 
     {
         Field const_value;
@@ -237,7 +243,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::extractAtomFromTree(const RPNBu
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuilderTreeNode & node, RPNElement & out, const RPNBuilderTreeNode * parent)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " ------------------------------------------------------ traverseFunction ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ traverseFunction ------------------------------------------------------ ");
 
     if (!node.isFunction())
         return false;
@@ -276,7 +282,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
             {
                 if (prepared_set->hasExplicitSetElements())
                 {
-                    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "traverseTreeIn");
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "traverseTreeIn");
                     // const auto prepared_info = getPreparedSetInfo(prepared_set);
                     // if (traverseTreeIn(function_name, lhs_argument, prepared_set, prepared_info.type, prepared_info.column, out))
                     //     return true;
@@ -322,11 +328,11 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeIn(
     const ColumnPtr & column,
     RPNElement & out)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn {} ", function_name);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn {} ", function_name);
     auto key_node_column_name = key_node.getColumnName();
     if (header.has(key_node_column_name))
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn ");
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn ");
     }
     if (!prepared_set)
         return false;
@@ -341,7 +347,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeIn(
         return false;
 
     size_t row_size = column->size();
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn row size {} ", row_size);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn row size {} ", row_size);
     out.function = RPNElement::FUNCTION_IN;
 
     // if (value_field.getType() != Field::Types::Array)
@@ -358,10 +364,10 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
     RPNElement & out,
     const RPNBuilderTreeNode * parent)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeEquals ");
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeEquals {} ", function_name);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals ");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals {} ", function_name);
     auto key_node_column_name = key_node.getColumnName();
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), " traverseTreeIn column name {} ", key_node_column_name);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn column name {} ", key_node_column_name);
 
     out.function = RPNElement::FUNCTION_HAS;
     const DataTypePtr actual_type = value_type;
@@ -386,21 +392,25 @@ MergeTreeIndexSuccinctRangeFilter::MergeTreeIndexSuccinctRangeFilter(
     : IMergeTreeIndex(index_)
     , ds_ratio(ds_ratio_)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexSuccinctRangeFilter");
     assert(ds_ratio != 0);
 }
 
 MergeTreeIndexGranulePtr MergeTreeIndexSuccinctRangeFilter::createIndexGranule() const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexGranule");
     return std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, index.column_names.size());
 }
 
 MergeTreeIndexAggregatorPtr MergeTreeIndexSuccinctRangeFilter::createIndexAggregator(const MergeTreeWriterSettings & /*settings*/) const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexAggregator");
     return std::make_shared<MergeTreeIndexAggregatorSuccinctRangeFilter>(ds_ratio, index.column_names);
 }
 
 MergeTreeIndexConditionPtr MergeTreeIndexSuccinctRangeFilter::createIndexCondition(const ActionsDAG * filter_actions_dag, ContextPtr context) const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexCondition");
     return std::make_shared<MergeTreeIndexConditionSuccinctRangeFilter>(filter_actions_dag, context, index.sample_block);
 }
 
@@ -410,23 +420,72 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "
                         "Position: {}, Block rows: {}.", *pos, block.rows());
     
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "update {} {}", pos[0], limit);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "update {} {} {}", pos[0], limit, block.rows());
+
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "index_columns_name.size() {}", index_columns_name.size());
+
+    // size_t i = 0;
+    // for (auto c : block)
+    // {
+    //     Field res;
+    //     c.column->get(c.column->size() - 1, res);
+    //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string {} size {}", i, toString(res).size());
+    //     ++i;
+    //     if (i > 10)
+    //         break;
+    // }
+
+    for (size_t column = 0; column < index_columns_name.size(); ++column)
+    {
+        const auto & column_and_type = block.getByName(index_columns_name[column]);
+
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column name {}", index_columns_name[column]);
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column type {}", column_and_type.type->getName());
+
+        for (size_t i = 0; i < 25; ++i)
+        {
+            Field res;
+            column_and_type.column->get(i, res);
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string {} size {}", toString(res), toString(res).size());
+        }
+
+        // Field res;
+        // column_and_type.column->get(column_and_type.column->size() - 1, res);
+        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column {}", toString(res));
+        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column size {}", column_and_type.column->size());
+        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string size {}", toString(res).size());
+
+        // const auto & index_col = checkAndGetColumn<ColumnUInt64>(*index_column);
+        // const auto & index_data = index_col.getData();
+        // for (const auto & hash: index_data)
+        //     column_hashes[column].insert(hash);
+    }
+
 }
 
 MergeTreeIndexAggregatorSuccinctRangeFilter::MergeTreeIndexAggregatorSuccinctRangeFilter(size_t ds_ratio_, const Names & columns_name_)
     : ds_ratio(ds_ratio_), index_columns_name(columns_name_), column_hashes(columns_name_.size())
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexAggregatorSuccinctRangeFilter");
     assert(ds_ratio != 0);
 }
 
 bool MergeTreeIndexAggregatorSuccinctRangeFilter::empty() const
 {
+    if (!total_rows)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "empty");
+    }
+    else
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "not empty");
+    }
     return !total_rows;
 }
 
 MergeTreeIndexGranulePtr MergeTreeIndexAggregatorSuccinctRangeFilter::getGranuleAndReset()
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "getGranuleAndReset");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "getGranuleAndReset");
 
     const auto granule = std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, column_hashes.size());
     total_rows = 0;
@@ -437,6 +496,7 @@ MergeTreeIndexGranulePtr MergeTreeIndexAggregatorSuccinctRangeFilter::getGranule
 MergeTreeIndexPtr succinctRangeFilterIndexCreator(
     const IndexDescription & index)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "succinctRangeFilterIndexCreator");
     size_t default_ds_ratio = 64;
 
     if (!index.arguments.empty())
@@ -467,9 +527,9 @@ void succinctRangeFilterIndexValidator(const IndexDescription & index, bool atta
     //         throw Exception(ErrorCodes::BAD_ARGUMENTS, "The BloomFilter false positive must be a double number between 0 and 1.");
     // }
     if (attach)
-        LOG_DEBUG(getLogger("succinctRangeFilterIndexValidator"), "this should be implemented attach {}", index.arguments.size());
+        LOG_DEBUG(getLogger("succinctRangeFilterIndexValidator"), "for now we assume validity (attach) {}", index.arguments.size());
     else
-        LOG_DEBUG(getLogger("succinctRangeFilterIndexValidator"), "this should be implemented not attach {}", index.arguments.size());
+        LOG_DEBUG(getLogger("succinctRangeFilterIndexValidator"), "for now we assume validity (not attach) {}", index.arguments.size());
 }
 
 }
