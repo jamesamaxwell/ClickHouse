@@ -864,6 +864,7 @@ MergeTreeIndexGranulePtr MergeTreeIndexAggregatorBloomFilter::getGranuleAndReset
 
 void MergeTreeIndexAggregatorBloomFilter::update(const Block & block, size_t * pos, size_t limit)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexAggregatorBloomFilter"), "update {} {} {}", *pos, limit, block.rows());
     if (*pos >= block.rows())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "
                         "Position: {}, Block rows: {}.", *pos, block.rows());

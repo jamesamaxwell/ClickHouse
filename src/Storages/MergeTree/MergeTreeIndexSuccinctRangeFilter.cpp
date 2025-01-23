@@ -47,12 +47,69 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
-MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root_)
+MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root)
     : ds_ratio(ds_ratio_)
 {
-    num_columns = 0;
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root_.is_terminal);
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
+    num_columns = 1;
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root.is_terminal);
+    size_t l_depth = findLargestDepth(root, ds_ratio);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "LOUDS_DENSE depth {}", l_depth);
+}
+
+/**
+ * @brief  Finds the largest depth l_depth satisfying:
+ *         (# of nodes with depth < l_depth) * ds_ratio <= (# of nodes with depth >= l_depth)
+ * @param  root     Reference to the root of the trie (depth 0).
+ * @param  ratio The ratio used in the comparison.
+ * @return The largest depth l_depth that satisfies the condition.
+ */
+size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const TrieNode & root, size_t ratio)
+{
+    // 1) Traverse the trie (BFS or DFS) to count how many nodes exist at each depth.
+    std::queue<std::pair<const TrieNode*, size_t>> node_queue;
+    node_queue.push({ &root, 0 });
+
+    std::vector<size_t> count_at_depth;  // count_at_depth[d] = # of nodes at depth d
+    size_t max_depth = 0;
+
+    while (!node_queue.empty())
+    {
+        auto [node_ptr, depth] = node_queue.front();
+        node_queue.pop();
+
+        // Extend our depth-count vector if necessary
+        if (depth >= count_at_depth.size())
+            count_at_depth.resize(depth + 1, 0);
+
+        count_at_depth[depth]++;
+        max_depth = std::max(max_depth, depth);
+
+        // Enqueue children with depth+1
+        for (const auto & kv : node_ptr->children)
+        {
+            node_queue.push({ kv.second.get(), depth + 1 });
+        }
+    }
+
+    std::vector<size_t> prefix(count_at_depth.size());
+    prefix[0] = count_at_depth[0];
+    for (size_t d = 1; d <= max_depth; ++d)
+        prefix[d] = prefix[d - 1] + count_at_depth[d];
+
+    const size_t total_nodes = prefix[max_depth];
+
+    for (int d = static_cast<int>(max_depth); d >= 0; --d)
+    {
+        size_t n_less = (d == 0) ? 0 : prefix[d - 1];
+        size_t n_at_least = total_nodes - n_less;
+
+        if (static_cast<double>(n_less) * ratio <= static_cast<double>(n_at_least))
+        {
+            return static_cast<size_t>(d); // Found the largest depth satisfying the condition
+        }
+    }
+
+    return 0;
 }
 
 MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_)
@@ -434,38 +491,30 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
     Block granule_index_block;
     size_t max_read_rows = std::min(block.rows() - *pos, limit);
     
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "update {} {} {}", pos[0], limit, block.rows());
-
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "index_columns_name.size() {}", index_columns_name.size());
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
-
-    // size_t i = 0;
-    // for (auto c : block)
-    // {
-    //     Field res;
-    //     c.column->get(c.column->size() - 1, res);
-    //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string {} size {}", i, toString(res).size());
-    //     ++i;
-    //     if (i > 10)
-    //         break;
-    // }
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "update {} {} {}", *pos, limit, block.rows());
 
     for (size_t column = 0; column < index_columns_name.size(); ++column)
     {
         const auto & column_and_type = block.getByName(index_columns_name[column]);
 
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column name {}", index_columns_name[column]);
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column type {}", column_and_type.type->getName());
+        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column name {}", index_columns_name[column]);
+        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column type {}", column_and_type.type->getName());
 
-        for (size_t i = 0; i < 25; ++i)
-        {
-            Field res;
-            column_and_type.column->get(i, res);
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string {} size {}", toString(res), toString(res).size());
-        }
+        // for (size_t i = *pos; i < *pos + 2; ++i)
+        // {
+        //     Field res;
+        //     column_and_type.column->get(i, res);
+        //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "start {} size {}", toString(res), toString(res).size());
+        // }
+        // for (size_t i = *pos + max_read_rows - 1; i < *pos + max_read_rows + 1; ++i)
+        // {
+        //     Field res;
+        //     column_and_type.column->get(i, res);
+        //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "end {} size {}", toString(res), toString(res).size());
+        // }
 
         // TrieNode node = root;
-        for (size_t i = 0; i < max_read_rows; ++i)
+        for (size_t i = *pos; i < *pos + max_read_rows; ++i)
         {
             Field res;
             column_and_type.column->get(i, res); // Probably a better way of doing this
@@ -485,16 +534,6 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
 
             current->is_terminal = true;
         }
-        // Field res;
-        // column_and_type.column->get(column_and_type.column->size() - 1, res);
-        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column {}", toString(res));
-        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column size {}", column_and_type.column->size());
-        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string size {}", toString(res).size());
-
-        // const auto & index_col = checkAndGetColumn<ColumnUInt64>(*index_column);
-        // const auto & index_data = index_col.getData();
-        // for (const auto & hash: index_data)
-        //     column_hashes[column].insert(hash);
     }
 
     *pos += max_read_rows;

@@ -37,13 +37,15 @@ struct TrieNode
 class MergeTreeIndexGranuleSuccinctRangeFilter final : public IMergeTreeIndexGranule
 {
 public:
-    MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root_);
+    MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root);
 
     MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_);
 
     // MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const std::vector<HashSet<UInt64>> & column_hashes);
 
     bool empty() const override;
+
+    size_t findLargestDepth(const TrieNode & root, size_t ds_ratio);
 
     void serializeBinary(WriteBuffer & ostr) const override;
     void deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version) override;
@@ -53,6 +55,7 @@ public:
 private:
     const size_t ds_ratio;
     size_t num_columns;
+    size_t dense_depth;
 
     std::vector<SuccinctRangeFilterPtr> surfs;
 
