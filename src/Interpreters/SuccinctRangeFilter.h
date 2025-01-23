@@ -21,19 +21,19 @@ namespace DB
 
 // };
 
-struct LoudsDense
-{
-    std::vector<UInt64> d_labels;
-    std::vector<UInt64> d_has_child;
-    std::vector<UInt64> d_is_prefix_tree;
-};
+// struct LoudsDense
+// {
+//     std::vector<UInt64> d_labels;
+//     std::vector<UInt64> d_has_child;
+//     std::vector<UInt64> d_is_prefix_tree;
+// };
 
-struct LoudsSparse
-{
-    std::vector<UInt64> s_labels;
-    std::vector<UInt64> s_has_child;
-    std::vector<UInt64> s_louds;
-};
+// struct LoudsSparse
+// {
+//     std::vector<UInt64> s_labels;
+//     std::vector<UInt64> s_has_child;
+//     std::vector<UInt64> s_louds;
+// };
 
 class SuccinctRangeFilter
 {

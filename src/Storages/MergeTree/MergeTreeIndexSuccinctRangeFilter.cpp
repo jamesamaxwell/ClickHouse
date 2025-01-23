@@ -47,11 +47,19 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
-MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t index_columns_)
-    : ds_ratio(ds_ratio_), surfs(index_columns_)
+MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root_)
+    : ds_ratio(ds_ratio_)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter");
-    total_rows = 0;
+    num_columns = 0;
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root_.is_terminal);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
+}
+
+MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_)
+    : ds_ratio(ds_ratio_), num_columns(num_columns_)
+{
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", num_columns);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
 }
 
 bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
@@ -59,7 +67,7 @@ bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "empty granule");
     /// One possible definition:
     /// Return true if we haven't added any rows yet, or if no filters exist.
-    return (total_rows == 0) || surfs.empty();
+    return surfs.empty();
 }
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ostr) const
@@ -388,29 +396,32 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
 
 MergeTreeIndexSuccinctRangeFilter::MergeTreeIndexSuccinctRangeFilter(
     const IndexDescription & index_,
-    size_t ds_ratio_)
+    size_t ds_ratio_,
+    size_t num_columns_)
     : IMergeTreeIndex(index_)
+    , num_columns(num_columns_)
     , ds_ratio(ds_ratio_)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexSuccinctRangeFilter");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexSuccinctRangeFilter {}", num_columns);
+    assert(num_columns != 0);
     assert(ds_ratio != 0);
 }
 
 MergeTreeIndexGranulePtr MergeTreeIndexSuccinctRangeFilter::createIndexGranule() const
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexGranule");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexGranule {}", num_columns);
     return std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, index.column_names.size());
 }
 
 MergeTreeIndexAggregatorPtr MergeTreeIndexSuccinctRangeFilter::createIndexAggregator(const MergeTreeWriterSettings & /*settings*/) const
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexAggregator");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexAggregator {}", num_columns);
     return std::make_shared<MergeTreeIndexAggregatorSuccinctRangeFilter>(ds_ratio, index.column_names);
 }
 
 MergeTreeIndexConditionPtr MergeTreeIndexSuccinctRangeFilter::createIndexCondition(const ActionsDAG * filter_actions_dag, ContextPtr context) const
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexCondition");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "createIndexCondition {}", num_columns);
     return std::make_shared<MergeTreeIndexConditionSuccinctRangeFilter>(filter_actions_dag, context, index.sample_block);
 }
 
@@ -419,10 +430,14 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
     if (*pos >= block.rows())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "
                         "Position: {}, Block rows: {}.", *pos, block.rows());
+
+    Block granule_index_block;
+    size_t max_read_rows = std::min(block.rows() - *pos, limit);
     
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "update {} {} {}", pos[0], limit, block.rows());
 
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "index_columns_name.size() {}", index_columns_name.size());
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
 
     // size_t i = 0;
     // for (auto c : block)
@@ -449,6 +464,27 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "string {} size {}", toString(res), toString(res).size());
         }
 
+        // TrieNode node = root;
+        for (size_t i = 0; i < max_read_rows; ++i)
+        {
+            Field res;
+            column_and_type.column->get(i, res); // Probably a better way of doing this
+
+            const String & key = toString(res);
+
+            TrieNode *current = &root;
+            for (char c : key)
+            {
+                if (current->children.find(c) == current->children.end())
+                {
+                    current->children[c] = std::make_unique<TrieNode>();
+                }
+                // Descend into the child
+                current = current->children[c].get();
+            }
+
+            current->is_terminal = true;
+        }
         // Field res;
         // column_and_type.column->get(column_and_type.column->size() - 1, res);
         // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column {}", toString(res));
@@ -461,12 +497,23 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
         //     column_hashes[column].insert(hash);
     }
 
+    *pos += max_read_rows;
+    total_rows += max_read_rows;
+
 }
 
+// Create an empty trie (root node)
+TrieNode createEmptyTrie()
+{
+    return TrieNode();
+}
+
+
 MergeTreeIndexAggregatorSuccinctRangeFilter::MergeTreeIndexAggregatorSuccinctRangeFilter(size_t ds_ratio_, const Names & columns_name_)
-    : ds_ratio(ds_ratio_), index_columns_name(columns_name_), column_hashes(columns_name_.size())
+    : ds_ratio(ds_ratio_), index_columns_name(columns_name_)
 {
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexAggregatorSuccinctRangeFilter");
+    root = createEmptyTrie();
     assert(ds_ratio != 0);
 }
 
@@ -487,16 +534,16 @@ MergeTreeIndexGranulePtr MergeTreeIndexAggregatorSuccinctRangeFilter::getGranule
 {
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "getGranuleAndReset");
 
-    const auto granule = std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, column_hashes.size());
+    const auto granule = std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, root);
     total_rows = 0;
-    column_hashes.clear();
+    // column_hashes.clear();
     return granule;
 }
 
 MergeTreeIndexPtr succinctRangeFilterIndexCreator(
     const IndexDescription & index)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "succinctRangeFilterIndexCreator");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "succinctRangeFilterIndexCreator assuming one column for now");
     size_t default_ds_ratio = 64;
 
     if (!index.arguments.empty())
@@ -506,7 +553,7 @@ MergeTreeIndexPtr succinctRangeFilterIndexCreator(
     }
 
     return std::make_shared<MergeTreeIndexSuccinctRangeFilter>(
-        index, default_ds_ratio);
+        index, default_ds_ratio, 1);    /// We assume that the index is created for one column.
 }
 
 void succinctRangeFilterIndexValidator(const IndexDescription & index, bool attach)
