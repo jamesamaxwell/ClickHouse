@@ -34,6 +34,12 @@ MergeTreeIndexGranuleMinMax::MergeTreeIndexGranuleMinMax(
 
 void MergeTreeIndexGranuleMinMax::serializeBinary(WriteBuffer & ostr) const
 {
+    // LOG_DEBUG(getLogger("MergeTreeIndexMinMax"), "hyperrectangle");
+    // for (size_t i = 0; i < hyperrectangle.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("MergeTreeIndexMinMax"), "- {}", hyperrectangle[i].toString());
+    // }
+
     if (empty())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Attempt to write empty minmax index {}", backQuote(index_name));
 
@@ -121,6 +127,7 @@ MergeTreeIndexGranulePtr MergeTreeIndexAggregatorMinMax::getGranuleAndReset()
 
 void MergeTreeIndexAggregatorMinMax::update(const Block & block, size_t * pos, size_t limit)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexAggregatorBloomFilter"), "update {} {} {}", *pos, limit, block.rows());
     if (*pos >= block.rows())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "
                 "Position: {}, Block rows: {}.", *pos, block.rows());

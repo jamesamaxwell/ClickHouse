@@ -52,8 +52,61 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
 {
     num_columns = 1;
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root.is_terminal);
-    size_t l_depth = findLargestDepth(root, ds_ratio);
+
+    // Filter superfluous nodes in the trie
+    auto [pruned_root, total_terminals] = pruneSubtree(root);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "trie pruned {}", total_terminals);
+
+    size_t l_depth = findLargestDepth(pruned_root, ds_ratio);
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "LOUDS_DENSE depth {}", l_depth);
+
+    // Convert upper part to LOUDS-DENSE
+
+    // Convert lower part to LOUDS-SPARSE
+}
+
+/**
+ * Recursively prunes a subtree. Returns:
+ *   ( pruned_subtree_root, number_of_terminals_in_subtree ).
+ *
+ * If the subtree contains exactly 1 terminal, all children are dropped
+ * and the returned root is marked terminal.
+ */
+std::pair<std::unique_ptr<TrieNode>, size_t> MergeTreeIndexGranuleSuccinctRangeFilter::pruneSubtree(const TrieNode & old_node)
+{
+    // Create a new node that will hold the pruned version of old_node.
+    auto new_node = std::make_unique<TrieNode>();
+    new_node->is_terminal = old_node.is_terminal;
+
+    // Count how many terminals are in this entire subtree (including itself).
+    size_t total_terminals = old_node.is_terminal ? 1 : 0;
+
+    // Recursively process each child.
+    for (const auto & kv : old_node.children)
+    {
+        // kv.first  = character label
+        // kv.second = unique_ptr<TrieNode>
+        const TrieNode * child_ptr = kv.second.get();
+        auto [pruned_child, child_terminals] = pruneSubtree(*child_ptr);
+
+        // If child subtree has at least 1 terminal, keep it in the new node
+        // (unless we decide to prune further below).
+        if (child_terminals > 0)
+        {
+            new_node->children[kv.first] = std::move(pruned_child);
+            total_terminals += child_terminals;
+        }
+    }
+
+    // If exactly 1 terminal was found below this node, we can prune all children
+    // and just mark this node as terminal.
+    if (total_terminals == 1)
+    {
+        new_node->children.clear();  // drop all children
+        new_node->is_terminal = true;
+    }
+
+    return {std::move(new_node), total_terminals};
 }
 
 /**
@@ -63,11 +116,15 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
  * @param  ratio The ratio used in the comparison.
  * @return The largest depth l_depth that satisfies the condition.
  */
-size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const TrieNode & root, size_t ratio)
+size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const std::unique_ptr<TrieNode> & root, size_t ratio)
 {
-    // 1) Traverse the trie (BFS or DFS) to count how many nodes exist at each depth.
+    // If there's no trie at all, largest depth is 0.
+    if (!root)
+        return 0;
+
+    // 1) Traverse the trie (BFS) to count how many nodes exist at each depth.
     std::queue<std::pair<const TrieNode*, size_t>> node_queue;
-    node_queue.push({ &root, 0 });
+    node_queue.push({ root.get(), 0 });
 
     std::vector<size_t> count_at_depth;  // count_at_depth[d] = # of nodes at depth d
     size_t max_depth = 0;
@@ -77,7 +134,6 @@ size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const TrieNode
         auto [node_ptr, depth] = node_queue.front();
         node_queue.pop();
 
-        // Extend our depth-count vector if necessary
         if (depth >= count_at_depth.size())
             count_at_depth.resize(depth + 1, 0);
 
@@ -91,6 +147,8 @@ size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const TrieNode
         }
     }
 
+    // 2) Build a prefix sum over count_at_depth for quick lookups.
+    //    prefix[d] = total nodes up to (and including) depth d.
     std::vector<size_t> prefix(count_at_depth.size());
     prefix[0] = count_at_depth[0];
     for (size_t d = 1; d <= max_depth; ++d)
@@ -98,6 +156,7 @@ size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const TrieNode
 
     const size_t total_nodes = prefix[max_depth];
 
+    // 3) Find the largest depth d s.t. (# nodes with depth < d)*ratio <= (# nodes with depth >= d).
     for (int d = static_cast<int>(max_depth); d >= 0; --d)
     {
         size_t n_less = (d == 0) ? 0 : prefix[d - 1];
@@ -105,12 +164,13 @@ size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const TrieNode
 
         if (static_cast<double>(n_less) * ratio <= static_cast<double>(n_at_least))
         {
-            return static_cast<size_t>(d); // Found the largest depth satisfying the condition
+            return static_cast<size_t>(d);
         }
     }
 
     return 0;
 }
+
 
 MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_)
     : ds_ratio(ds_ratio_), num_columns(num_columns_)
@@ -482,7 +542,7 @@ MergeTreeIndexConditionPtr MergeTreeIndexSuccinctRangeFilter::createIndexConditi
     return std::make_shared<MergeTreeIndexConditionSuccinctRangeFilter>(filter_actions_dag, context, index.sample_block);
 }
 
-void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, size_t * pos, size_t limit)
+void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, size_t * pos, size_t limit) // This would work much better if the granules were in alphabetical order
 {
     if (*pos >= block.rows())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "

@@ -45,7 +45,8 @@ public:
 
     bool empty() const override;
 
-    size_t findLargestDepth(const TrieNode & root, size_t ds_ratio);
+    size_t findLargestDepth(const std::unique_ptr<TrieNode> & root, size_t ratio);
+    std::pair<std::unique_ptr<TrieNode>, size_t> pruneSubtree(const TrieNode & old_node);
 
     void serializeBinary(WriteBuffer & ostr) const override;
     void deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version) override;
