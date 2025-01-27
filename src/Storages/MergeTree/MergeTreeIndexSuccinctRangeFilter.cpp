@@ -60,9 +60,7 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
     size_t l_depth = findLargestDepth(pruned_root, ds_ratio);
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "LOUDS_DENSE depth {}", l_depth);
 
-    // Convert upper part to LOUDS-DENSE
-
-    // Convert lower part to LOUDS-SPARSE
+    surfs.push_back(std::make_shared<SuccinctRangeFilter>(std::move(pruned_root), l_depth));
 }
 
 /**
