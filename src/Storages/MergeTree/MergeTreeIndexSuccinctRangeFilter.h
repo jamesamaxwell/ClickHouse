@@ -14,25 +14,25 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
-struct LoudsDense
-{
-    std::vector<UInt64> d_labels;
-    std::vector<UInt64> d_has_child;
-    std::vector<UInt64> d_is_prefix_tree;
-};
+// struct LoudsDense
+// {
+//     std::vector<UInt64> d_labels;
+//     std::vector<UInt64> d_has_child;
+//     std::vector<UInt64> d_is_prefix_tree;
+// };
 
-struct LoudsSparse
-{
-    std::vector<UInt64> s_labels;
-    std::vector<UInt64> s_has_child;
-    std::vector<UInt64> s_louds;
-};
+// struct LoudsSparse
+// {
+//     std::vector<UInt64> s_labels;
+//     std::vector<UInt64> s_has_child;
+//     std::vector<UInt64> s_louds;
+// };
 
-struct TrieNode
-{
-    std::unordered_map<char, std::unique_ptr<TrieNode>> children; // Map of child nodes
-    bool is_terminal = false;                                    // Marks if the node is the end of a valid key
-};
+// struct TrieNode
+// {
+//     std::unordered_map<char, std::unique_ptr<TrieNode>> children; // Map of child nodes
+//     bool is_terminal = false;                                    // Marks if the node is the end of a valid key
+// };
 
 class MergeTreeIndexGranuleSuccinctRangeFilter final : public IMergeTreeIndexGranule
 {
@@ -45,7 +45,7 @@ public:
 
     bool empty() const override;
 
-    size_t findLargestDepth(const std::unique_ptr<TrieNode> & root, size_t ratio);
+    size_t findLargestDepth(const std::unique_ptr<TrieNode> & root, size_t ratio); // Maybe move these to SuccinctRangeFilter.h
     std::pair<std::unique_ptr<TrieNode>, size_t> pruneSubtree(const TrieNode & old_node);
 
     void serializeBinary(WriteBuffer & ostr) const override;

@@ -191,7 +191,7 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ost
 {
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "serializeBinary");
     if (!surfs.empty())
-        ostr.write(reinterpret_cast<const char *>(surfs[0]->getFilter().data()), 4);
+        ostr.write(reinterpret_cast<const char *>("test"), 4);
 }
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version)
@@ -200,14 +200,15 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
     if (version != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
 
+    std::vector<char> buffer (1024,0);
     if (!surfs.empty())
-        istr.readStrict(reinterpret_cast<char *>(surfs[0]->getFilter().data()), 4);
+        istr.readStrict(buffer.data(), buffer.size());
 }
 
 void fillingSuccinctRangeFilter(SuccinctRangeFilterPtr & surf)
 {
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fillingSuccinctRangeFilter");
-    surf->add("test", 5);
+    surf->getFilter();
 }
 
 MergeTreeIndexConditionSuccinctRangeFilter::MergeTreeIndexConditionSuccinctRangeFilter(

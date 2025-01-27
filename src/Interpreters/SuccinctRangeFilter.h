@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <bitset>
 #include <base/types.h>
 #include <Core/Field.h>
 #include <Common/PODArray.h>
@@ -21,44 +22,65 @@ namespace DB
 
 // };
 
-// struct LoudsDense
-// {
-//     std::vector<UInt64> d_labels;
-//     std::vector<UInt64> d_has_child;
-//     std::vector<UInt64> d_is_prefix_tree;
-// };
+struct TrieNode
+{
+    std::unordered_map<char, std::unique_ptr<TrieNode>> children; // Map of child nodes
+    bool is_terminal = false;                                    // Marks if the node is the end of a valid key
+};
 
-// struct LoudsSparse
-// {
-//     std::vector<UInt64> s_labels;
-//     std::vector<UInt64> s_has_child;
-//     std::vector<UInt64> s_louds;
-// };
+struct BFSItem
+{
+    TrieNode * node;
+    size_t depth;
+};
+
+struct LOUDSDenseTrie // Change variable names a some point
+{
+    std::vector<std::bitset<256>> d_labels;
+    std::vector<std::bitset<256>> d_hasChild;
+    std::vector<bool> d_isPrefixKey;
+    std::vector<uint64_t> d_values;
+};
+
+struct LOUDSSparseTrie // Change variable names a some point
+{
+    std::vector<uint8_t> s_labels;
+    std::vector<bool> s_hasChild;
+    std::vector<bool> s_LOUDS;
+    std::vector<uint64_t> s_values;
+};
+
+struct LOUDSdsTrie
+{
+    LOUDSDenseTrie dense;
+    LOUDSSparseTrie sparse;
+};
 
 class SuccinctRangeFilter
 {
 
 public:
-    using UnderType = UInt64;
-    using Container = std::vector<UnderType>;
 
-    SuccinctRangeFilter(size_t ds_ratio_);
 
-    bool find(const char * data, size_t len);
-    void add(const char * data, size_t len);
-    void clear();
+    // using UnderType = UInt64;
+    // using Container = std::vector<UnderType>;
 
-    const Container & getFilter() const { return filter; }
-    Container & getFilter() { return filter; }
+    SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t l_depth);
+
+    // bool find(const char * data, size_t len);
+    // void add(const char * data, size_t len);
+    // void clear();
+
+    const LOUDSdsTrie & getFilter() const { return surf; }
+    LOUDSdsTrie & getFilter() { return surf; }
 
     /// For debug.
 //    UInt64 isEmpty() const;
 
-    friend bool operator== (const SuccinctRangeFilter & a, const SuccinctRangeFilter & b);
+    // friend bool operator== (const SuccinctRangeFilter & a, const SuccinctRangeFilter & b);
 private:
 
-    size_t ds_ratio;
-    Container filter;
+    LOUDSdsTrie surf;
 
 // public:
 //     static ColumnPtr getPrimitiveColumn(const ColumnPtr & column);
@@ -67,7 +89,7 @@ private:
 
 using SuccinctRangeFilterPtr = std::shared_ptr<SuccinctRangeFilter>;
 
-bool operator== (const SuccinctRangeFilter & a, const SuccinctRangeFilter & b);
+//bool operator== (const SuccinctRangeFilter & a, const SuccinctRangeFilter & b);
 
 
 }
