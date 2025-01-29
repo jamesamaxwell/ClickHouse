@@ -51,8 +51,9 @@ namespace ErrorCodes
 
 // }
 
-SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t l_depth)
+SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t l_depth) // TODO: change this so that it make full dense and sparse and then finds depth
 {
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "SuccinctRangeFilter");
     // Clear existing data
     surf.dense = LOUDSDenseTrie();
     surf.sparse = LOUDSSparseTrie();
@@ -72,6 +73,8 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     std::vector<TrieNode*> dense_nodes;
     // We also record which nodes belong in the sparse part
     std::vector<TrieNode*> sparse_roots;  // all nodes at depth == l_depth
+
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "enqueueing");
 
     while (!bfs_queue.empty())
     {
@@ -98,15 +101,22 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
                     else
                     {
                         // The child is exactly at depth l_depth => goes to the SPARSE part
+                        // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "child pushed to sparse {}", kv.first);
+                        // sparse_roots.push_back(node_ptr);
                         sparse_roots.push_back(child_ptr);
                     }
                 }
             }
-            else
-            {
-                // Node is at or beyond l_depth => goes to sparse
-                sparse_roots.push_back(node_ptr);
-            }
+            // else
+            // {
+            //     // Node is at or beyond l_depth => goes to sparse
+            //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "parent pushed to sparse");
+            //     for (auto & kv : node_ptr->children)
+            //     {
+            //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "{}", kv.first);
+            //     }
+            //     sparse_roots.push_back(node_ptr);
+            // }
         }
     }
 
@@ -115,11 +125,14 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     // (A minimal example that sets bits according to child edges.)
     // ------------------------------------------------------------
 
+
     // We need one entry per dense node in BFS order
     const size_t dense_count = dense_nodes.size();
     surf.dense.d_labels.resize(dense_count);
     surf.dense.d_hasChild.resize(dense_count);
     surf.dense.d_isPrefixKey.resize(dense_count, false);
+
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "building LOUDS_DENSE {}", dense_count);
 
     char c = ' ';
 
@@ -148,6 +161,7 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
             // {
             // Mark label c
             surf.dense.d_labels[i].set(static_cast<unsigned char>(c));
+            // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "set d_labels: {} {}", i, c);
 
             // If child has any children => hasChild = true
             if (!child_ptr->children.empty())
@@ -178,6 +192,9 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     // We'll do a BFS over the sub-tries whose roots we found.
     // To avoid duplicates, we might need a visited set if a node can appear multiple times.
     // For simplicity, we'll assume no overlap.
+
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "enqueueing sparse");
+
     std::queue<TrieNode*> sparse_queue;
     for (TrieNode * sp_root : sparse_roots)
         sparse_queue.push(sp_root);
@@ -204,23 +221,30 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     // s_LOUDS[i] = true if s_labels[i] is the first label of a node;
     //             false if it continues the same node.
     // If node->is_terminal => we add 0xFF as a special label at the start.
+
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "building LOUDS_SPARSE");
+
     for (size_t i = 0; i < sparse_nodes.size(); ++i)
     {
         TrieNode * node = sparse_nodes[i];
+
+        // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "sparse node is_terminal: {} children: {}", node->is_terminal, node->children.size());
 
         // Indicate that the *next* label we write belongs to a new node
         bool first_label_of_node = true;
 
         // If this node is terminal => put 0xFF as a special label
-        if (node->is_terminal)
+        if (node->is_terminal && !node->children.empty())
         {
-            surf.sparse.s_labels.push_back(0xFF);
-            surf.sparse.s_hasChild.push_back(false);     // 0xFF doesn't lead to a real child
-            surf.sparse.s_LOUDS.push_back(first_label_of_node); 
-            first_label_of_node = false;
+            // surf.sparse.s_labels.push_back(0xFF);
+            // surf.sparse.s_hasChild.push_back(false);     // 0xFF doesn't lead to a real child
+            // surf.sparse.s_LOUDS.push_back(first_label_of_node); 
+            // first_label_of_node = false;
 
-            // Optionally store a corresponding value
-            surf.sparse.s_values.push_back(static_cast<uint64_t>(i));
+            // // Optionally store a corresponding value
+            // surf.sparse.s_values.push_back(static_cast<uint64_t>(i));
+            // node->children.push_back(std::make_pair(0xFF, nullptr));
+            node->children[0xFF] = std::make_unique<TrieNode>();
         }
 
         // For each real child label, push it onto s_labels
@@ -228,6 +252,7 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
         {
             uint8_t val = static_cast<uint8_t>(kv.first);
             surf.sparse.s_labels.push_back(val);
+            // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_label {}", kv.first);
 
             TrieNode * child_ptr = kv.second.get();
             bool has_subtrie = !child_ptr->children.empty(); 
@@ -240,20 +265,33 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
         }
     }
 
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "built LOUDS_SPARSE {}", surf.sparse.s_labels.size());
 
-    for (size_t i = 0; i < 5; ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels {} {}", i, surf.dense.d_labels[i].to_string());
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild {} {}", i, surf.dense.d_hasChild[i].to_string());
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey {} {}", i, surf.dense.d_isPrefixKey[i]);
-    }
+    // for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
+    // }
+    // for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
+    // }
+    // for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
+    // }
 
-    for (size_t i = 0; i < 5; ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels {} {}", i, surf.sparse.s_labels[i]);
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild {} {}", i, surf.sparse.s_hasChild[i]);
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS {} {}", i, surf.sparse.s_LOUDS[i]);
-    }
+    // for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
+    // }
+    // for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
+    // }
+    // for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
+    // }
 }
 
 }
