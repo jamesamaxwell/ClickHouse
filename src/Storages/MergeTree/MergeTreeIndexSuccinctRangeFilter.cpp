@@ -47,57 +47,57 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
-MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root)
-    : ds_ratio(ds_ratio_)
+MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root, size_t total_rows_)
+    : ds_ratio(ds_ratio_), total_rows(total_rows_)
 {
     num_columns = 1;
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root.is_terminal);
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root.is_terminal);
 
-    if (root.children.size() == 0)
-    {
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "root has no children");
-    }
-    else
-    {
-        for (auto & child : root.children)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter root child {}", child.first);
-        }
-        for (auto & child : root.children)
-        {
-            for (auto & grandchild : child.second->children)
-            {
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter root grandchild {}", grandchild.first);
-            }
-        }
-    }
+    // if (root.children.size() == 0)
+    // {
+    //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "root has no children");
+    // }
+    // else
+    // {
+    //     for (auto & child : root.children)
+    //     {
+    //         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter root child {}", child.first);
+    //     }
+    //     for (auto & child : root.children)
+    //     {
+    //         for (auto & grandchild : child.second->children)
+    //         {
+    //             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter root grandchild {}", grandchild.first);
+    //         }
+    //     }
+    // }
 
     // Filter superfluous nodes in the trie
     auto [pruned_root, total_terminals] = pruneSubtree(root);
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "trie pruned {}", total_terminals);
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "trie pruned {}", total_terminals);
 
-    if (pruned_root == nullptr)
-    {
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "pruned_root is null");
-    }
-    else
-    {
-        for (auto & child : pruned_root->children)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter pruned child {}", child.first);
+    // if (pruned_root == nullptr)
+    // {
+    //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "pruned_root is null");
+    // }
+    // else
+    // {
+    //     for (auto & child : pruned_root->children)
+    //     {
+    //         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter pruned child {}", child.first);
 
-        }
-        for (auto & child : pruned_root->children)
-        {
-            for (auto & grandchild : child.second->children)
-            {
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter pruned grandchild {}", grandchild.first);
-            }
-        }
-    }
+    //     }
+    //     for (auto & child : pruned_root->children)
+    //     {
+    //         for (auto & grandchild : child.second->children)
+    //         {
+    //             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter pruned grandchild {}", grandchild.first);
+    //         }
+    //     }
+    // }
 
     size_t l_depth = findLargestDepth(pruned_root, ds_ratio);
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "LOUDS_DENSE depth {}", l_depth);
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "LOUDS_DENSE depth {}", l_depth);
 
     if (pruned_root == nullptr)
     {
@@ -106,7 +106,13 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
     else
     {
         SuccinctRangeFilterPtr surf = std::make_shared<SuccinctRangeFilter>(std::move(pruned_root), l_depth);
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "surf constructed");
+
+        dense_nodes = surf->getFilter().dense.d_labels.size();
+        d_values = surf->getFilter().dense.d_values.size();
+
+        sparse_nodes = surf->getFilter().sparse.s_labels.size();
+        s_values = surf->getFilter().sparse.s_values.size();
+
         surfs.push_back(surf);
     }
 }
@@ -225,7 +231,8 @@ size_t MergeTreeIndexGranuleSuccinctRangeFilter::findLargestDepth(const std::uni
 MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_)
     : ds_ratio(ds_ratio_), num_columns(num_columns_)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", num_columns);
+    total_rows = 0;
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter second constructor yet to be implemented {}", num_columns);
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
 }
 
@@ -239,9 +246,121 @@ bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ostr) const
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "serializeBinary");
-    if (!surfs.empty())
-        ostr.write(reinterpret_cast<const char *>("test"), 4);
+    writeVarUInt(total_rows, ostr);
+
+    SuccinctRangeFilterPtr surf = surfs[0];
+
+    size_t d_labels_size = dense_nodes * sizeof(std::bitset<256>);
+    size_t d_has_child_size = dense_nodes * sizeof(std::bitset<256>);
+    size_t d_is_prefix_key_size = dense_nodes * sizeof(bool);
+    size_t d_values_size = d_values * sizeof(uint64_t);
+
+    size_t s_labels_size = sparse_nodes * sizeof(uint8_t);
+    size_t s_has_child_size = sparse_nodes * sizeof(bool);
+    size_t s_louds_size = sparse_nodes * sizeof(bool);
+    size_t s_values_size = s_values * sizeof(uint64_t);
+
+    size_t louds_dense_size = d_labels_size + d_has_child_size + d_is_prefix_key_size + d_values_size;
+    size_t louds_sparse_size = s_labels_size + s_has_child_size + s_louds_size + s_values_size;
+    
+    size_t write_size = louds_dense_size + louds_sparse_size;
+
+    // for (const auto & surf : surfs)
+    // {
+    // const char * write_buffer = reinterpret_cast<const char *>(surf->getFilter().dense.d_labels.data());
+
+    write_size = surf->getWriteSize();
+    ostr.write(serializeTrie(surf->getFilter(),
+                    d_labels_size,
+                    d_has_child_size,
+                    d_is_prefix_key_size,
+                    d_values_size,
+                    s_labels_size,
+                    s_has_child_size,
+                    s_louds_size,
+                    s_values_size).data(), write_size);
+    //}
+}
+
+std::vector<char> MergeTreeIndexGranuleSuccinctRangeFilter::serializeTrie(const LOUDSdsTrie &trie,
+    size_t denseLabelsBytes,
+    size_t denseHasChildBytes,
+    size_t denseIsPrefixKeyBytes,
+    size_t denseValuesBytes,
+    size_t sparseLabelsBytes,
+    size_t sparseHasChildBytes,
+    size_t sparseLOUDSBytes,
+    size_t sparseValuesBytes) const
+{
+    // Compute total number of bytes in the final buffer.
+    size_t totalBytes = denseLabelsBytes + denseHasChildBytes + denseIsPrefixKeyBytes +
+                        denseValuesBytes + sparseLabelsBytes + sparseHasChildBytes +
+                        sparseLOUDSBytes + sparseValuesBytes;
+    
+    std::vector<char> buffer(totalBytes);
+    size_t offset = 0;
+    
+    // Copy the dense.d_labels vector.
+    // Each element is a std::bitset<256> (typically 32 bytes, but this may depend on the implementation).
+    memcpy(buffer.data() + offset,
+           reinterpret_cast<const char*>(trie.dense.d_labels.data()),
+           denseLabelsBytes);
+    offset += denseLabelsBytes;
+    
+    // Copy the dense.d_hasChild vector.
+    memcpy(buffer.data() + offset,
+           reinterpret_cast<const char*>(trie.dense.d_hasChild.data()),
+           denseHasChildBytes);
+    offset += denseHasChildBytes;
+    
+    std::vector<char> packedBoolVector = packBoolVector(trie.dense.d_isPrefixKey);
+    memcpy(buffer.data() + offset,
+        packedBoolVector.data(),
+        packedBoolVector.size());
+    offset += packedBoolVector.size();
+    
+    // Copy the dense.d_values vector.
+    memcpy(buffer.data() + offset,
+           reinterpret_cast<const char*>(trie.dense.d_values.data()),
+           denseValuesBytes);
+    offset += denseValuesBytes;
+    
+    // Copy the sparse.s_labels vector.
+    memcpy(buffer.data() + offset,
+           reinterpret_cast<const char*>(trie.sparse.s_labels.data()),
+           sparseLabelsBytes);
+    offset += sparseLabelsBytes;
+    
+    packedBoolVector = packBoolVector(trie.sparse.s_hasChild);
+    memcpy(buffer.data() + offset,
+        packedBoolVector.data(),
+        packedBoolVector.size());
+    offset += packedBoolVector.size();
+
+    packedBoolVector = packBoolVector(trie.sparse.s_LOUDS);
+    memcpy(buffer.data() + offset,
+        packedBoolVector.data(),
+        packedBoolVector.size());
+    offset += packedBoolVector.size();
+    
+    // Copy the sparse.s_values vector.
+    memcpy(buffer.data() + offset,
+           reinterpret_cast<const char*>(trie.sparse.s_values.data()),
+           sparseValuesBytes);
+    // offset += sparseValuesBytes; // (Not really needed at the end.)
+    
+    return buffer;
+}
+
+std::vector<char> MergeTreeIndexGranuleSuccinctRangeFilter::packBoolVector(const std::vector<bool>& boolVec) const {
+    size_t numBytes = (boolVec.size() + 7) / 8; // 8 bits per byte
+    std::vector<char> packed(numBytes, 0);
+    for (size_t i = 0; i < boolVec.size(); ++i) {
+        if (boolVec[i]) {
+            packed[i / 8] |= (1 << (i % 8));
+        }
+    }
+    return packed;
 }
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version)
@@ -602,7 +721,7 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
     Block granule_index_block;
     size_t max_read_rows = std::min(block.rows() - *pos, limit);
     
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "update {} {} {}", *pos, limit, block.rows());
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "update {} {} {}", *pos, limit, block.rows());
 
     for (size_t column = 0; column < index_columns_name.size(); ++column)
     {
@@ -669,24 +788,17 @@ MergeTreeIndexAggregatorSuccinctRangeFilter::MergeTreeIndexAggregatorSuccinctRan
 
 bool MergeTreeIndexAggregatorSuccinctRangeFilter::empty() const
 {
-    if (!total_rows)
-    {
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "empty");
-    }
-    else
-    {
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "not empty");
-    }
-    return !total_rows;
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "aggregator empty");
+    return root.children.size() == 0;
 }
 
 MergeTreeIndexGranulePtr MergeTreeIndexAggregatorSuccinctRangeFilter::getGranuleAndReset()
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "getGranuleAndReset");
-
-    const auto granule = std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, root);
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "getGranuleAndReset");
+    const auto granule = std::make_shared<MergeTreeIndexGranuleSuccinctRangeFilter>(ds_ratio, root, total_rows);
     total_rows = 0;
-    // column_hashes.clear();
+    root.children.clear();
+    root.is_terminal = false;
     return granule;
 }
 

@@ -37,7 +37,7 @@ namespace ErrorCodes
 class MergeTreeIndexGranuleSuccinctRangeFilter final : public IMergeTreeIndexGranule
 {
 public:
-    MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root);
+    MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root, size_t total_rows_);
 
     MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_);
 
@@ -51,12 +51,32 @@ public:
     void serializeBinary(WriteBuffer & ostr) const override;
     void deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version) override;
 
+    std::vector<char> serializeTrie(const LOUDSdsTrie &trie,
+                                    size_t denseLabelsBytes,
+                                    size_t denseHasChildBytes,
+                                    size_t denseIsPrefixKeyBytes,
+                                    size_t denseValuesBytes,
+                                    size_t sparseLabelsBytes,
+                                    size_t sparseHasChildBytes,
+                                    size_t sparseLOUDSBytes,
+                                    size_t sparseValuesBytes) const;
+                                    
+    std::vector<char> packBoolVector(const std::vector<bool>& boolVec) const;
+
     const std::vector<SuccinctRangeFilterPtr> & getFilters() const { return surfs; }
 
 private:
     const size_t ds_ratio;
     size_t num_columns;
     size_t dense_depth;
+
+    size_t dense_nodes = 0;
+    size_t d_values = 0;
+
+    size_t sparse_nodes = 0;
+    size_t s_values = 0;
+
+    size_t total_rows = 0;
 
     std::vector<SuccinctRangeFilterPtr> surfs;
 
@@ -152,6 +172,15 @@ public:
 private:
     size_t ds_ratio;
     const Names index_columns_name;
+
+    // size_t num_columns;
+    // size_t dense_depth;
+
+    // size_t dense_nodes = 0;
+    // size_t d_values = 0;
+
+    // size_t sparse_nodes = 0;
+    // size_t s_values = 0;
 
     TrieNode root;
     size_t total_rows = 0;

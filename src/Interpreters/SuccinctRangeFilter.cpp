@@ -51,6 +51,24 @@ namespace ErrorCodes
 
 // }
 
+size_t SuccinctRangeFilter::getWriteSize()
+{
+    size_t d_labels_size = surf.dense.d_labels.size() * sizeof(std::bitset<256>);
+    size_t d_has_child_size = surf.dense.d_hasChild.size() * sizeof(std::bitset<256>);
+    size_t d_is_prefix_tree_size = surf.dense.d_isPrefixKey.size() * sizeof(bool);
+    size_t d_values_size = surf.dense.d_values.size() * sizeof(uint64_t);
+
+    size_t s_labels_size = surf.sparse.s_labels.size() * sizeof(uint8_t);
+    size_t s_has_child_size = surf.sparse.s_hasChild.size() * sizeof(bool);
+    size_t s_louds_size = surf.sparse.s_LOUDS.size() * sizeof(bool);
+    size_t s_values_size = surf.sparse.s_values.size() * sizeof(uint64_t);
+
+    size_t louds_dense_size = d_labels_size + d_has_child_size + d_is_prefix_tree_size + d_values_size;
+    size_t louds_sparse_size = s_labels_size + s_has_child_size + s_louds_size + s_values_size;
+    
+    return louds_dense_size + louds_sparse_size;
+}
+
 SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t l_depth) // TODO: change this so that it make full dense and sparse and then finds depth
 {
     // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "SuccinctRangeFilter");

@@ -74,6 +74,8 @@ public:
     const LOUDSdsTrie & getFilter() const { return surf; }
     LOUDSdsTrie & getFilter() { return surf; }
 
+    size_t getWriteSize();
+
     /// For debug.
 //    UInt64 isEmpty() const;
 
