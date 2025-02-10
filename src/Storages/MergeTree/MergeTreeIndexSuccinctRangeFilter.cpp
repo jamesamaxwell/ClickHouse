@@ -246,7 +246,12 @@ bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ostr) const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "serializeBinary");
     writeVarUInt(total_rows, ostr);
+    writeVarUInt(dense_nodes, ostr);
+    writeVarUInt(d_values, ostr);
+    writeVarUInt(sparse_nodes, ostr);
+    writeVarUInt(s_values, ostr);
 
     SuccinctRangeFilterPtr surf = surfs[0];
 
@@ -369,9 +374,111 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
     if (version != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
 
-    std::vector<char> buffer (1024,0);
-    if (!surfs.empty())
-        istr.readStrict(buffer.data(), buffer.size());
+    readVarUInt(total_rows, istr);
+    readVarUInt(dense_nodes, istr);
+    readVarUInt(d_values, istr);
+    readVarUInt(sparse_nodes, istr);
+    readVarUInt(s_values, istr);
+
+    size_t d_labels_size = dense_nodes * sizeof(std::bitset<256>);
+    size_t d_has_child_size = dense_nodes * sizeof(std::bitset<256>);
+    size_t d_is_prefix_key_size = dense_nodes * sizeof(bool);
+    size_t d_values_size = d_values * sizeof(uint64_t);
+
+    size_t s_labels_size = sparse_nodes * sizeof(uint8_t);
+    size_t s_has_child_size = sparse_nodes * sizeof(bool);
+    size_t s_louds_size = sparse_nodes * sizeof(bool);
+    size_t s_values_size = s_values * sizeof(uint64_t);
+
+    size_t louds_dense_size = d_labels_size + d_has_child_size + d_is_prefix_key_size + d_values_size;
+    size_t louds_sparse_size = s_labels_size + s_has_child_size + s_louds_size + s_values_size;
+    
+    size_t write_size = louds_dense_size + louds_sparse_size;
+
+    // std::vector<char> buffer (1024,0);
+    std::vector<char> buffer(write_size);
+    istr.readStrict(buffer.data(), write_size);
+
+    SuccinctRangeFilterPtr surf = surfs[0];
+    // LOUDSdsTrie &trie = surf->getFilter();
+    size_t offset = 0;
+
+    surf->getFilter().dense.d_labels.resize(d_labels_size / sizeof(std::bitset<256>));
+    memcpy(surf->getFilter().dense.d_labels.data(),
+            buffer.data() + offset,
+            d_labels_size);
+    offset += d_labels_size;
+
+    surf->getFilter().dense.d_hasChild.resize(d_has_child_size / sizeof(std::bitset<256>));
+    memcpy(surf->getFilter().dense.d_hasChild.data(),
+            buffer.data() + offset,
+            d_has_child_size);
+    offset += d_has_child_size;
+
+    surf->getFilter().dense.d_isPrefixKey.resize(d_is_prefix_key_size * 8);
+    for (size_t i = 0; i < d_is_prefix_key_size * 8 && i < surf->getFilter().dense.d_isPrefixKey.size(); i++) {
+        surf->getFilter().dense.d_isPrefixKey[i] = (buffer[offset + (i / 8)] >> (i % 8)) & 1;
+    }
+    offset += d_is_prefix_key_size;
+
+    surf->getFilter().dense.d_values.resize(d_values_size / sizeof(uint64_t));
+    memcpy(surf->getFilter().dense.d_values.data(),
+           buffer.data() + offset,
+           d_values_size);
+    offset += d_values_size;
+
+    surf->getFilter().sparse.s_labels.resize(s_labels_size / sizeof(uint8_t));
+    memcpy(surf->getFilter().sparse.s_labels.data(),
+           buffer.data() + offset,
+           s_labels_size);
+    offset += s_labels_size;
+
+    surf->getFilter().sparse.s_hasChild.resize(s_has_child_size * 8);
+    for (size_t i = 0; i < s_has_child_size * 8 && i < surf->getFilter().sparse.s_hasChild.size(); i++) {
+        surf->getFilter().sparse.s_hasChild[i] = (buffer[offset + (i / 8)] >> (i % 8)) & 1;
+    }
+    offset += s_has_child_size;
+
+    surf->getFilter().sparse.s_LOUDS.resize(s_louds_size * 8);
+    for (size_t i = 0; i < s_louds_size * 8 && i < surf->getFilter().sparse.s_LOUDS.size(); i++) {
+        surf->getFilter().sparse.s_LOUDS[i] = (buffer[offset + (i / 8)] >> (i % 8)) & 1;
+    }
+    offset += s_louds_size;
+
+    surf->getFilter().sparse.s_values.resize(s_values_size / sizeof(uint64_t));
+    memcpy(surf->getFilter().sparse.s_values.data(),
+           buffer.data() + offset,
+           s_values_size);
+    offset += s_values_size;
+    
+    LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "deserialized LOUDS:");
+    LOUDSdsTrie &trie = surf->getFilter();
+
+    for (size_t i = 0; i < trie.dense.d_labels.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "d_labels: {} {}", i, trie.dense.d_labels[i].to_string());
+    }
+    for (size_t i = 0; i < trie.dense.d_hasChild.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "d_hasChild: {} {}", i, trie.dense.d_hasChild[i].to_string());
+    }
+    for (size_t i = 0; i < trie.dense.d_isPrefixKey.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, trie.dense.d_isPrefixKey[i]);
+    }
+
+    for (size_t i = 0; i < trie.sparse.s_labels.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "s_labels: {} {}", i, trie.sparse.s_labels[i]);
+    }
+    for (size_t i = 0; i < trie.sparse.s_hasChild.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "s_hasChild: {} {}", i, trie.sparse.s_hasChild[i]);
+    }
+    for (size_t i = 0; i < trie.sparse.s_LOUDS.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "s_LOUDS: {} {}", i, trie.sparse.s_LOUDS[i]);
+    }
 }
 
 void fillingSuccinctRangeFilter(SuccinctRangeFilterPtr & surf)
@@ -781,7 +888,7 @@ TrieNode createEmptyTrie()
 MergeTreeIndexAggregatorSuccinctRangeFilter::MergeTreeIndexAggregatorSuccinctRangeFilter(size_t ds_ratio_, const Names & columns_name_)
     : ds_ratio(ds_ratio_), index_columns_name(columns_name_)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexAggregatorSuccinctRangeFilter");
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexAggregatorSuccinctRangeFilter");
     root = createEmptyTrie();
     assert(ds_ratio != 0);
 }

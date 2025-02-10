@@ -87,6 +87,7 @@ bool MergeTreeIndexGranuleBloomFilter::empty() const
 
 void MergeTreeIndexGranuleBloomFilter::deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version)
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "deserializeBinary");
     if (version != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
 
@@ -99,6 +100,7 @@ void MergeTreeIndexGranuleBloomFilter::deserializeBinary(ReadBuffer & istr, Merg
     {
         filter->resize(bytes_size);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "byte order big endian");
         read_size = filter->getFilter().size() * sizeof(BloomFilter::UnderType);
 #endif
         istr.readStrict(reinterpret_cast<char *>(filter->getFilter().data()), read_size);
@@ -107,6 +109,7 @@ void MergeTreeIndexGranuleBloomFilter::deserializeBinary(ReadBuffer & istr, Merg
 
 void MergeTreeIndexGranuleBloomFilter::serializeBinary(WriteBuffer & ostr) const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "serializeBinary");
     if (empty())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Attempt to write empty bloom filter index.");
 
@@ -118,6 +121,7 @@ void MergeTreeIndexGranuleBloomFilter::serializeBinary(WriteBuffer & ostr) const
     {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
         write_size = bloom_filter->getFilter().size() * sizeof(BloomFilter::UnderType);
+        LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "byte order big endian");
 #endif
         ostr.write(reinterpret_cast<const char *>(bloom_filter->getFilter().data()), write_size);
     }

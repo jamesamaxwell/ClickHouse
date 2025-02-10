@@ -283,33 +283,33 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
         }
     }
 
-    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "built LOUDS_SPARSE {}", surf.sparse.s_labels.size());
+    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "LOUDS:");
 
-    // for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
-    // }
-    // for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
-    // }
-    // for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
-    // }
+    for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
+    }
+    for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
+    }
+    for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
+    }
 
-    // for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
-    // }
-    // for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
-    // }
-    // for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
-    // }
+    for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
+    }
+    for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
+    }
+    for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
+    }
 }
 
 }
