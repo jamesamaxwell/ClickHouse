@@ -31,6 +31,10 @@
 #include <Storages/MergeTree/RPNBuilder.h>
 #include <base/types.h>
 
+// Delete these eventually
+#include <Interpreters/BloomFilterHash.h>
+#include <Interpreters/BloomFilter.h>
+
 #include <Common/logger_useful.h>
 
 namespace DB
@@ -45,6 +49,19 @@ namespace ErrorCodes
     extern const int INCORRECT_QUERY;
     extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
     extern const int LOGICAL_ERROR;
+}
+
+ColumnWithTypeAndName getPreparedSetInfo(const ConstSetPtr & prepared_set)
+{
+    if (prepared_set->getDataTypes().size() == 1)
+        return {prepared_set->getSetElements()[0], prepared_set->getElementsTypes()[0], "dummy"};
+
+    Columns set_elements;
+    for (auto & set_element : prepared_set->getSetElements())
+
+        set_elements.emplace_back(set_element->convertToFullColumnIfConst());
+
+    return {ColumnTuple::create(set_elements), std::make_shared<DataTypeTuple>(prepared_set->getElementsTypes()), "dummy"};
 }
 
 MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const TrieNode & root, size_t total_rows_)
@@ -454,30 +471,67 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
     LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "deserialized LOUDS:");
     LOUDSdsTrie &trie = surf->getFilter();
 
+
     for (size_t i = 0; i < trie.dense.d_labels.size(); ++i)
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "d_labels: {} {}", i, trie.dense.d_labels[i].to_string());
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, trie.dense.d_labels[i].to_string());
     }
     for (size_t i = 0; i < trie.dense.d_hasChild.size(); ++i)
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "d_hasChild: {} {}", i, trie.dense.d_hasChild[i].to_string());
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, trie.dense.d_hasChild[i].to_string());
     }
     for (size_t i = 0; i < trie.dense.d_isPrefixKey.size(); ++i)
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, trie.dense.d_isPrefixKey[i]);
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, trie.dense.d_isPrefixKey[i]);
+    }
+    for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, trie.dense.d_values[i]);
+    }
+    for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
+    {
+        std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.dense.d_values[i]);
+        if (buffer_ptr)
+        {
+            std::vector<char> buffer0 = *buffer_ptr;
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer0);
+        }
+        else
+        {
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
+        }
+
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, trie.dense.d_values[i]);
     }
 
     for (size_t i = 0; i < trie.sparse.s_labels.size(); ++i)
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "s_labels: {} {}", i, trie.sparse.s_labels[i]);
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, trie.sparse.s_labels[i]);
     }
     for (size_t i = 0; i < trie.sparse.s_hasChild.size(); ++i)
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "s_hasChild: {} {}", i, trie.sparse.s_hasChild[i]);
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, trie.sparse.s_hasChild[i]);
     }
     for (size_t i = 0; i < trie.sparse.s_LOUDS.size(); ++i)
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "s_LOUDS: {} {}", i, trie.sparse.s_LOUDS[i]);
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, trie.sparse.s_LOUDS[i]);
+    }
+    for (size_t i = 0; i < trie.sparse.s_values.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, trie.sparse.s_values[i]);
+    }
+    for (size_t i = 0; i < trie.sparse.s_values.size(); ++i)
+    {
+        std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.sparse.s_values[i]);
+        if (buffer_ptr)
+        {
+            std::vector<char> buffer0 = *buffer_ptr;
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, buffer0);
+        }
+        else
+        {
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
+        }
     }
 }
 
@@ -512,14 +566,117 @@ MergeTreeIndexConditionSuccinctRangeFilter::MergeTreeIndexConditionSuccinctRange
 bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
 {
     std::vector<bool> rpn_stack;
-    rpn_stack.push_back(true);
 
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "alwaysUnknownOrTrue");
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "alwaysUnknownOrTrue");
+
+    for (const auto & element : rpn)
+    {
+        // if (element.function == RPNElement::FUNCTION_UNKNOWN)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_UNKNOWN");
+        // }
+        // else if (element.function == RPNElement::ALWAYS_TRUE)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "ALWAYS_TRUE");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_EQUALS)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_EQUALS");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_NOT_EQUALS)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT_EQUALS");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_HAS)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_HAS_ANY)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS_ANY");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_HAS_ALL)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS_ALL");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_IN)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_IN");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_NOT_IN)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT_IN");
+        // }
+        // else if (element.function == RPNElement::ALWAYS_FALSE)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "ALWAYS_FALSE");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_NOT)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_AND)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_AND");
+        // }
+        // else if (element.function == RPNElement::FUNCTION_OR)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_OR");
+        // } else if (element.function == RPNElement::FUNCTION_GREATER)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_GREATER");
+        // } else if (element.function == RPNElement::FUNCTION_LESS)
+        // {
+        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_LESS");
+        // }
+
+        if (element.function == RPNElement::FUNCTION_UNKNOWN
+            || element.function == RPNElement::ALWAYS_TRUE)
+        {
+            rpn_stack.push_back(true);
+        }
+        else if (element.function == RPNElement::FUNCTION_EQUALS
+            || element.function == RPNElement::FUNCTION_NOT_EQUALS
+            || element.function == RPNElement::FUNCTION_HAS
+            || element.function == RPNElement::FUNCTION_HAS_ANY
+            || element.function == RPNElement::FUNCTION_HAS_ALL
+            || element.function == RPNElement::FUNCTION_IN
+            || element.function == RPNElement::FUNCTION_NOT_IN
+            || element.function == RPNElement::ALWAYS_FALSE
+            || element.function == RPNElement::FUNCTION_GREATER
+            || element.function == RPNElement::FUNCTION_LESS)
+        {
+            rpn_stack.push_back(false);
+        }
+        else if (element.function == RPNElement::FUNCTION_NOT)
+        {
+            // do nothing
+        }
+        else if (element.function == RPNElement::FUNCTION_AND)
+        {
+            auto arg1 = rpn_stack.back();
+            rpn_stack.pop_back();
+            auto arg2 = rpn_stack.back();
+            rpn_stack.back() = arg1 && arg2;
+        }
+        else if (element.function == RPNElement::FUNCTION_OR)
+        {
+            auto arg1 = rpn_stack.back();
+            rpn_stack.pop_back();
+            auto arg2 = rpn_stack.back();
+            rpn_stack.back() = arg1 || arg2;
+        }
+        else
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected function type in KeyCondition::RPNElement");
+    }
+
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "allwaysUnknownOrTrue {}", rpn_stack[0]);
     return rpn_stack[0];
 }
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeTreeIndexGranuleSuccinctRangeFilter * granule) const
 {
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "mayBeTrueOnGranule");
     std::vector<BoolMask> rpn_stack;
     const auto & filters = granule->getFilters();
     if (!filters.empty())
@@ -612,7 +769,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::extractAtomFromTree(const RPNBuilderTreeNode & node, RPNElement & out)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ extractAtomFromTree ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "extractAtomFromTree");
 
     {
         Field const_value;
@@ -623,29 +780,34 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::extractAtomFromTree(const RPNBu
             if (const_value.getType() == Field::Types::UInt64)
             {
                 out.function = const_value.safeGet<UInt64>() ? RPNElement::ALWAYS_TRUE : RPNElement::ALWAYS_FALSE;
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " Type: UInt64 ");
                 return true;
             }
 
             if (const_value.getType() == Field::Types::Int64)
             {
                 out.function = const_value.safeGet<Int64>() ? RPNElement::ALWAYS_TRUE : RPNElement::ALWAYS_FALSE;
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " Type: Int64 ");
                 return true;
             }
 
             if (const_value.getType() == Field::Types::Float64)
             {
                 out.function = const_value.safeGet<Float64>() != 0.0 ? RPNElement::ALWAYS_TRUE : RPNElement::ALWAYS_FALSE;
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " Type: Float64 ");
                 return true;
             }
         }
     }
 
-    return traverseFunction(node, out, nullptr /*parent*/);
+    auto tf = traverseFunction(node, out, nullptr /*parent*/);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "extractAtomFromTree {}", tf);
+    return tf;
 }
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuilderTreeNode & node, RPNElement & out, const RPNBuilderTreeNode * parent)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ traverseFunction ------------------------------------------------------ ");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "  traverseFunction  ");
 
     if (!node.isFunction())
         return false;
@@ -653,6 +815,14 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
     const auto function = node.toFunctionNode();
     auto arguments_size = function.getArgumentsSize();
     auto function_name = function.getFunctionName();
+
+    // if (function_name == "less" || function_name == "greater") // This is just for testing
+    // {
+    //     return true;
+    // }
+
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "  function name: {} {} ", function_name, arguments_size);
+
 
     if (parent == nullptr)
     {
@@ -685,9 +855,9 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
                 if (prepared_set->hasExplicitSetElements())
                 {
                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "traverseTreeIn");
-                    // const auto prepared_info = getPreparedSetInfo(prepared_set);
-                    // if (traverseTreeIn(function_name, lhs_argument, prepared_set, prepared_info.type, prepared_info.column, out))
-                    //     return true;
+                    const auto prepared_info = getPreparedSetInfo(prepared_set);
+                    if (traverseTreeIn(function_name, lhs_argument, prepared_set, prepared_info.type, prepared_info.column, out))
+                        return true;
                 }
             }
         }
@@ -700,19 +870,21 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
         function_name == "mapContains" ||
         function_name == "indexOf" ||
         function_name == "hasAny" ||
-        function_name == "hasAll")
+        function_name == "hasAll" ||
+        function_name == "less" ||
+        function_name == "greater") // Add geq, leq
     {
         Field const_value;
         DataTypePtr const_type;
 
         if (rhs_argument.tryGetConstant(const_value, const_type))
         {
-            if (traverseTreeEquals(function_name, lhs_argument, const_type, const_value, out, parent))
+            if (traverseTreeEquals(function_name, lhs_argument, const_type, const_value, out/*, parent*/))
                 return true;
         }
         else if (lhs_argument.tryGetConstant(const_value, const_type) && (function_name == "equals" || function_name == "notEquals"))
         {
-            if (traverseTreeEquals(function_name, rhs_argument, const_type, const_value, out, parent))
+            if (traverseTreeEquals(function_name, rhs_argument, const_type, const_value, out/*, parent*/))
                 return true;
         }
 
@@ -730,32 +902,126 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeIn(
     const ColumnPtr & column,
     RPNElement & out)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn {} ", function_name);
     auto key_node_column_name = key_node.getColumnName();
+
     if (header.has(key_node_column_name))
     {
-        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn ");
+        size_t row_size = column->size();
+        size_t position = header.getPositionByName(key_node_column_name);
+        const DataTypePtr & index_type = header.getByPosition(position).type;
+        const auto & converted_column = castColumn(ColumnWithTypeAndName{column, type, ""}, index_type);
+        out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithColumn(index_type, converted_column, 0, row_size)));
+
+        if (function_name == "in"  || function_name == "globalIn")
+            out.function = RPNElement::FUNCTION_IN;
+
+        if (function_name == "notIn"  || function_name == "globalNotIn")
+            out.function = RPNElement::FUNCTION_NOT_IN;
+
+        return true;
     }
-    if (!prepared_set)
-        return false;
-    
-    auto default_column_to_check = type->createColumnConstWithDefaultValue(1)->convertToFullColumnIfConst();
-    ColumnWithTypeAndName default_column_with_type_to_check { default_column_to_check, type, "" };
-    ColumnsWithTypeAndName default_columns_with_type_to_check = {default_column_with_type_to_check};
-    auto set_contains_default_value_predicate_column = prepared_set->execute(default_columns_with_type_to_check, false /*negative*/);
-    const auto & set_contains_default_value_predicate_column_typed = assert_cast<const ColumnUInt8 &>(*set_contains_default_value_predicate_column);
-    bool set_contain_default_value = set_contains_default_value_predicate_column_typed.getData()[0];
-    if (set_contain_default_value)
-        return false;
 
-    size_t row_size = column->size();
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn row size {} ", row_size);
-    out.function = RPNElement::FUNCTION_IN;
+    if (key_node.isFunction())
+    {
+        auto key_node_function = key_node.toFunctionNode();
+        auto key_node_function_name = key_node_function.getFunctionName();
+        size_t key_node_function_arguments_size = key_node_function.getArgumentsSize();
 
-    // if (value_field.getType() != Field::Types::Array)
-    //     throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Second argument for function {} must be an array.", function_name);
+        WhichDataType which(type);
 
-    return true;
+        if (which.isTuple() && key_node_function_name == "tuple")
+        {
+            const auto & tuple_column = typeid_cast<const ColumnTuple *>(column.get());
+            const auto & tuple_data_type = typeid_cast<const DataTypeTuple *>(type.get());
+
+            if (tuple_data_type->getElements().size() != key_node_function_arguments_size || tuple_column->getColumns().size() != key_node_function_arguments_size)
+                throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Illegal types of arguments of function {}", function_name);
+
+            bool match_with_subtype = false;
+            const auto & sub_columns = tuple_column->getColumns();
+            const auto & sub_data_types = tuple_data_type->getElements();
+
+            for (size_t index = 0; index < key_node_function_arguments_size; ++index)
+                match_with_subtype |= traverseTreeIn(function_name, key_node_function.getArgumentAt(index), nullptr, sub_data_types[index], sub_columns[index], out);
+
+            return match_with_subtype;
+        }
+
+        if (key_node_function_name == "arrayElement")
+        {
+            /** Try to parse arrayElement for mapKeys index.
+              * It is important to ignore keys like column_map['Key'] IN ('') because if the key does not exist in the map
+              * we return the default value for arrayElement.
+              *
+              * We cannot skip keys that does not exist in map if comparison is with default type value because
+              * that way we skip necessary granules where the map key does not exist.
+              */
+            if (!prepared_set)
+                return false;
+
+            auto default_column_to_check = type->createColumnConstWithDefaultValue(1)->convertToFullColumnIfConst();
+            ColumnWithTypeAndName default_column_with_type_to_check { default_column_to_check, type, "" };
+            ColumnsWithTypeAndName default_columns_with_type_to_check = {default_column_with_type_to_check};
+            auto set_contains_default_value_predicate_column = prepared_set->execute(default_columns_with_type_to_check, false /*negative*/);
+            const auto & set_contains_default_value_predicate_column_typed = assert_cast<const ColumnUInt8 &>(*set_contains_default_value_predicate_column);
+            bool set_contain_default_value = set_contains_default_value_predicate_column_typed.getData()[0];
+            if (set_contain_default_value)
+                return false;
+
+            auto first_argument = key_node_function.getArgumentAt(0);
+            const auto column_name = first_argument.getColumnName();
+            auto map_keys_index_column_name = fmt::format("mapKeys({})", column_name);
+            auto map_values_index_column_name = fmt::format("mapValues({})", column_name);
+
+            if (header.has(map_keys_index_column_name))
+            {
+                /// For mapKeys we serialize key argument with bloom filter
+
+                auto second_argument = key_node_function.getArgumentAt(1);
+
+                Field constant_value;
+                DataTypePtr constant_type;
+
+                if (second_argument.tryGetConstant(constant_value, constant_type))
+                {
+                    size_t position = header.getPositionByName(map_keys_index_column_name);
+                    const DataTypePtr & index_type = header.getByPosition(position).type;
+                    const DataTypePtr actual_type = BloomFilter::getPrimitiveType(index_type);
+                    out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), constant_value)));
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else if (header.has(map_values_index_column_name))
+            {
+                /// For mapValues we serialize set with bloom filter
+
+                size_t row_size = column->size();
+                size_t position = header.getPositionByName(map_values_index_column_name);
+                const DataTypePtr & index_type = header.getByPosition(position).type;
+                const auto & array_type = assert_cast<const DataTypeArray &>(*index_type);
+                const auto & array_nested_type = array_type.getNestedType();
+                const auto & converted_column = castColumn(ColumnWithTypeAndName{column, type, ""}, array_nested_type);
+                out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithColumn(array_nested_type, converted_column, 0, row_size)));
+            }
+            else
+            {
+                return false;
+            }
+
+            if (function_name == "in"  || function_name == "globalIn")
+                out.function = RPNElement::FUNCTION_IN;
+
+            if (function_name == "notIn"  || function_name == "globalNotIn")
+                out.function = RPNElement::FUNCTION_NOT_IN;
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
@@ -763,29 +1029,196 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
     const RPNBuilderTreeNode & key_node,
     const DataTypePtr & value_type,
     const Field & value_field,
-    RPNElement & out,
-    const RPNBuilderTreeNode * parent)
+    RPNElement & out/*,
+    const RPNBuilderTreeNode * parent*/)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals ");
     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals {} ", function_name);
-    auto key_node_column_name = key_node.getColumnName();
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeIn column name {} ", key_node_column_name);
 
-    out.function = RPNElement::FUNCTION_HAS;
-    const DataTypePtr actual_type = value_type;
-    auto converted_field = convertFieldToType(value_field, *actual_type, value_type.get());
-    if (converted_field.isNull())
-        return false;
+    auto key_column_name = key_node.getColumnName();
 
-    if (value_field.getType() != Field::Types::Array)
-        throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Second argument for function {} must be an array.", function_name);
+    if (header.has(key_column_name))
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals header has column name {} ", key_column_name);
+        size_t position = header.getPositionByName(key_column_name);
+        const DataTypePtr & index_type = header.getByPosition(position).type;
+        const auto * array_type = typeid_cast<const DataTypeArray *>(index_type.get());
 
-    out.function = RPNElement::FUNCTION_IN;
+        if (function_name == "has" || function_name == "indexOf")
+        {
+            if (!array_type)
+                throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "First argument for function {} must be an array.", function_name);
 
-    if (!parent->isFunction())
-        return false;
+            /// We can treat `indexOf` function similar to `has`.
+            /// But it is little more cumbersome, compare: `has(arr, elem)` and `indexOf(arr, elem) != 0`.
+            /// The `parent` in this context is expected to be function `!=` (`notEquals`).
+            if (function_name == "has"/* || indexOfCanUseBloomFilter(parent)*/)
+            {
+                out.function = RPNElement::FUNCTION_HAS;
+                const DataTypePtr actual_type = BloomFilter::getPrimitiveType(array_type->getNestedType());
+                auto converted_field = convertFieldToType(value_field, *actual_type, value_type.get());
+                if (converted_field.isNull())
+                    return false;
 
-    return true;
+                out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), converted_field)));
+            }
+        }
+        else if (function_name == "hasAny" || function_name == "hasAll")
+        {
+            if (!array_type)
+                throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "First argument for function {} must be an array.", function_name);
+
+            if (value_field.getType() != Field::Types::Array)
+                throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Second argument for function {} must be an array.", function_name);
+
+            const DataTypePtr actual_type = BloomFilter::getPrimitiveType(array_type->getNestedType());
+            ColumnPtr column;
+            {
+                const bool is_nullable = actual_type->isNullable();
+                auto mutable_column = actual_type->createColumn();
+
+                for (const auto & f : value_field.safeGet<Array>())
+                {
+                    if ((f.isNull() && !is_nullable) || f.isDecimal(f.getType())) /// NOLINT(readability-static-accessed-through-instance)
+                        return false;
+
+                    auto converted = convertFieldToType(f, *actual_type);
+                    if (converted.isNull())
+                        return false;
+
+                    mutable_column->insert(converted);
+                }
+
+                column = std::move(mutable_column);
+            }
+
+            out.function = function_name == "hasAny" ?
+                RPNElement::FUNCTION_HAS_ANY :
+                RPNElement::FUNCTION_HAS_ALL;
+            out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithColumn(actual_type, column, 0, column->size())));
+        }
+        else if (function_name == "greater" || function_name == "less")
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "greater or less");
+            out.function = function_name == "greater" ? RPNElement::FUNCTION_GREATER : RPNElement::FUNCTION_LESS;
+            // out.predicate.emplace_back(std::make_pair(position, value_field));
+            return true;
+        }
+        else
+        {
+            if (array_type)
+                throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
+                                "An array type of surf supports only has(), indexOf(), and hasAny() functions.");
+
+            out.function = function_name == "equals" ? RPNElement::FUNCTION_EQUALS : RPNElement::FUNCTION_NOT_EQUALS;
+            const DataTypePtr actual_type = BloomFilter::getPrimitiveType(index_type);
+            auto converted_field = convertFieldToType(value_field, *actual_type, value_type.get());
+            if (converted_field.isNull())
+                return false;
+
+            out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), converted_field)));
+        }
+
+        return true;
+    }
+
+    if (function_name == "mapContains" || function_name == "has")
+    {
+        auto map_keys_index_column_name = fmt::format("mapKeys({})", key_column_name);
+        if (!header.has(map_keys_index_column_name))
+            return false;
+
+        size_t position = header.getPositionByName(map_keys_index_column_name);
+        const DataTypePtr & index_type = header.getByPosition(position).type;
+        const auto * array_type = typeid_cast<const DataTypeArray *>(index_type.get());
+
+        if (!array_type)
+            return false;
+
+        out.function = RPNElement::FUNCTION_HAS;
+        const DataTypePtr actual_type = BloomFilter::getPrimitiveType(array_type->getNestedType());
+        auto converted_field = convertFieldToType(value_field, *actual_type, value_type.get());
+        if (converted_field.isNull())
+            return false;
+
+        out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), converted_field)));
+        return true;
+    }
+
+    if (key_node.isFunction())
+    {
+        WhichDataType which(value_type);
+
+        auto key_node_function = key_node.toFunctionNode();
+        auto key_node_function_name = key_node_function.getFunctionName();
+        size_t key_node_function_arguments_size = key_node_function.getArgumentsSize();
+
+        if (which.isTuple() && key_node_function_name == "tuple")
+        {
+            const Tuple & tuple = value_field.safeGet<const Tuple &>();
+            const auto * value_tuple_data_type = typeid_cast<const DataTypeTuple *>(value_type.get());
+
+            if (tuple.size() != key_node_function_arguments_size)
+                throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Illegal types of arguments of function {}", function_name);
+
+            bool match_with_subtype = false;
+            const DataTypes & subtypes = value_tuple_data_type->getElements();
+
+            for (size_t index = 0; index < tuple.size(); ++index)
+                match_with_subtype |= traverseTreeEquals(function_name, key_node_function.getArgumentAt(index), subtypes[index], tuple[index], out/*, &key_node*/);
+
+            return match_with_subtype;
+        }
+
+        if (key_node_function_name == "arrayElement" && (function_name == "equals" || function_name == "notEquals"))
+        {
+            /** Try to parse arrayElement for mapKeys index.
+              * It is important to ignore keys like column_map['Key'] = '' because if key does not exist in the map
+              * we return default the value for arrayElement.
+              *
+              * We cannot skip keys that does not exist in map if comparison is with default type value because
+              * that way we skip necessary granules where map key does not exist.
+              */
+            if (value_field == value_type->getDefault())
+                return false;
+
+            auto first_argument = key_node_function.getArgumentAt(0);
+            const auto column_name = first_argument.getColumnName();
+
+            auto map_keys_index_column_name = fmt::format("mapKeys({})", column_name);
+            auto map_values_index_column_name = fmt::format("mapValues({})", column_name);
+
+            size_t position = 0;
+            Field const_value = value_field;
+            DataTypePtr const_type;
+
+            if (header.has(map_keys_index_column_name))
+            {
+                position = header.getPositionByName(map_keys_index_column_name);
+                auto second_argument = key_node_function.getArgumentAt(1);
+
+                if (!second_argument.tryGetConstant(const_value, const_type))
+                    return false;
+            }
+            else if (header.has(map_values_index_column_name))
+            {
+                position = header.getPositionByName(map_values_index_column_name);
+            }
+            else
+            {
+                return false;
+            }
+
+            out.function = function_name == "equals" ? RPNElement::FUNCTION_EQUALS : RPNElement::FUNCTION_NOT_EQUALS;
+
+            const auto & index_type = header.getByPosition(position).type;
+            const auto actual_type = BloomFilter::getPrimitiveType(index_type);
+            out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), const_value)));
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 MergeTreeIndexSuccinctRangeFilter::MergeTreeIndexSuccinctRangeFilter(

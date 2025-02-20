@@ -265,6 +265,7 @@ bool MergeTreeIndexConditionBloomFilter::alwaysUnknownOrTrue() const
             throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected function type in KeyCondition::RPNElement");
     }
 
+    LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "alwaysUnknownOrTrue {}", rpn_stack[0]);
     return rpn_stack[0];
 }
 
@@ -370,7 +371,9 @@ bool MergeTreeIndexConditionBloomFilter::extractAtomFromTree(const RPNBuilderTre
         }
     }
 
-    return traverseFunction(node, out, nullptr /*parent*/);
+    auto tf = traverseFunction(node, out, nullptr /*parent*/);
+    LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "extractAtomFromTree {}", tf);
+    return tf;
 }
 
 bool MergeTreeIndexConditionBloomFilter::traverseFunction(const RPNBuilderTreeNode & node, RPNElement & out, const RPNBuilderTreeNode * parent)
@@ -868,7 +871,7 @@ MergeTreeIndexGranulePtr MergeTreeIndexAggregatorBloomFilter::getGranuleAndReset
 
 void MergeTreeIndexAggregatorBloomFilter::update(const Block & block, size_t * pos, size_t limit)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexAggregatorBloomFilter"), "update {} {} {}", *pos, limit, block.rows());
+    // LOG_DEBUG(getLogger("MergeTreeIndexAggregatorBloomFilter"), "update {} {} {}", *pos, limit, block.rows());
     if (*pos >= block.rows())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The provided position is not less than the number of block rows. "
                         "Position: {}, Block rows: {}.", *pos, block.rows());

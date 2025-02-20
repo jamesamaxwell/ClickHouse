@@ -79,6 +79,65 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     if (!root)
         return; // empty trie => nothing to do
 
+
+    // ------------------------------------------------------------
+    // PHASE 0: Construct d_values and s_values
+    // ------------------------------------------------------------
+    
+    std::queue<KeyItem> key_queue;
+    key_queue.push({ root.get(), std::vector<char>() });
+    while (!key_queue.empty())
+    {
+        auto [node_ptr, key] = key_queue.front();
+        key_queue.pop();
+
+        if (!node_ptr->children.empty())
+        {
+            for (auto & kv : node_ptr->children)
+            {
+                std::vector<char> temp_key = key;
+                char ch = kv.first;
+                TrieNode * child_ptr = kv.second.get();
+                temp_key.emplace_back(ch);
+                key_queue.push({ child_ptr, temp_key });
+            }
+            if (node_ptr->is_terminal)
+            {
+                std::vector<char> temp_key = key;
+                temp_key.emplace_back(char(0xFF));
+                key_queue.push({ new TrieNode(), temp_key });
+            }
+        }
+        else
+        {
+            // char * str_ptr = key.data();
+            if (key.size() <= l_depth)
+            {
+                if (key.back() == char(0xFF))
+                {
+                    key.pop_back();
+                }
+                // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_value: {}", key);
+                std::vector<char>* buffer_ptr = new std::vector<char>(key);
+                // buffer_ptr = &key;
+                // auto vec_ptr = std::make_unique<std::vector<char>>(key);
+                surf.dense.d_values.emplace_back(reinterpret_cast<uint64_t>(buffer_ptr));
+            }
+            else
+            {
+                if (key.back() == char(0xFF))
+                {
+                    key.pop_back();
+                }
+                // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_value: {}", key);
+                std::vector<char>* buffer_ptr = new std::vector<char>(key);
+                // buffer_ptr = &key;
+                surf.sparse.s_values.emplace_back(reinterpret_cast<uint64_t>(buffer_ptr));
+            }
+        }
+    }
+    
+
     // ------------------------------------------------------------
     // PHASE 1: BFS up to depth < l_depth for the DENSE portion
     // ------------------------------------------------------------
@@ -125,17 +184,21 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
                     }
                 }
             }
-            // else
-            // {
-            //     // Node is at or beyond l_depth => goes to sparse
-            //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "parent pushed to sparse");
-            //     for (auto & kv : node_ptr->children)
-            //     {
-            //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "{}", kv.first);
-            //     }
-            //     sparse_roots.push_back(node_ptr);
-            // }
         }
+        // else
+        // {
+        //     char * str_ptr = key.data();
+        //     if (depth > l_depth)
+        //     {
+        //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_value: {}", key);
+        //         surf.dense.d_values.emplace_back(reinterpret_cast<uint64_t>(str_ptr));
+        //     }
+        //     else
+        //     {
+        //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_value: {}", key);
+        //         surf.sparse.s_values.emplace_back(reinterpret_cast<uint64_t>(str_ptr));
+        //     }
+        // }
     }
 
     // ------------------------------------------------------------
@@ -153,6 +216,7 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "building LOUDS_DENSE {}", dense_count);
 
     char c = ' ';
+    std::vector<char> key;
 
     // We might store a value in d_values for each terminal node (example).
     // The real logic depends on your design.
@@ -183,7 +247,15 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
 
             // If child has any children => hasChild = true
             if (!child_ptr->children.empty())
+            {
                 surf.dense.d_hasChild[i].set(static_cast<unsigned char>(c));
+            }
+            // else
+            // {
+
+            //     surf.dense.d_values.push_back(static_cast<uint64_t>(c));
+            // }
+            
             // }
             // else
             // {
@@ -196,11 +268,11 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
         }
 
         // If you want to store a d_value for terminal nodes:
-        if (node->is_terminal)
-        {
-            // Just push back an ID
-            surf.dense.d_values.push_back(static_cast<uint64_t>(c));
-        }
+        // if (node->is_terminal)
+        // {
+        //     // Just push back an ID
+        //     surf.dense.d_values.push_back(static_cast<uint64_t>(c));
+        // }
     }
 
     // ------------------------------------------------------------
@@ -283,33 +355,69 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
         }
     }
 
-    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "LOUDS:");
+    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "LOUDS:");
 
-    for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
-    }
-    for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
-    }
-    for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
-    }
+    // for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
+    // }
+    // for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
+    // }
+    // for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
+    // }
+    // for (size_t i = 0; i < surf.dense.d_values.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, surf.dense.d_values[i]);
+    // }
+    // for (size_t i = 0; i < surf.dense.d_values.size(); ++i)
+    // {
+    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(surf.dense.d_values[i]);
+    //     if (buffer_ptr)
+    //     {
+    //         std::vector<char> buffer = *buffer_ptr;
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer);
+    //     }
+    //     else
+    //     {
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
+    //     }
 
-    for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
-    }
-    for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
-    }
-    for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
-    }
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, surf.dense.d_values[i]);
+    // }
+
+    // for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
+    // }
+    // for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
+    // }
+    // for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
+    // }
+    // for (size_t i = 0; i < surf.sparse.s_values.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, surf.sparse.s_values[i]);
+    // }
+    // for (size_t i = 0; i < surf.sparse.s_values.size(); ++i)
+    // {
+    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(surf.sparse.s_values[i]);
+    //     if (buffer_ptr)
+    //     {
+    //         std::vector<char> buffer = *buffer_ptr;
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, buffer);
+    //     }
+    //     else
+    //     {
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
+    //     }
+    // }
 }
 
 }

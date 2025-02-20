@@ -34,6 +34,12 @@ struct BFSItem
     size_t depth;
 };
 
+struct KeyItem
+{
+    TrieNode * node;
+    std::vector<char> key;
+};
+
 struct LOUDSDenseTrie // Change variable names a some point
 {
     std::vector<std::bitset<256>> d_labels;

@@ -91,10 +91,10 @@ public:
         enum Function
         {
             /// Atoms of a Boolean expression.
-            // FUNCTION_GREATER,
-            // FUNCTION_LESS,
-            // FUNCTION_GREATER_OR_EQUALS,
-            // FUNCTION_LESS_OR_EQUALS,
+            FUNCTION_GREATER,
+            FUNCTION_LESS,
+            FUNCTION_GREATER_OR_EQUALS,
+            FUNCTION_LESS_OR_EQUALS,
             FUNCTION_EQUALS, // Can I delete these?
             FUNCTION_NOT_EQUALS,
             FUNCTION_HAS,
@@ -115,7 +115,7 @@ public:
         RPNElement(Function function_ = FUNCTION_UNKNOWN) : function(function_) {} /// NOLINT
 
         Function function = FUNCTION_UNKNOWN;
-        std::vector<std::pair<size_t, ColumnPtr>> predicate;
+        std::vector<std::pair<size_t, ColumnPtr>> predicate; // can this be removed?
     };
 
     MergeTreeIndexConditionSuccinctRangeFilter(const ActionsDAG * filter_actions_dag, ContextPtr context_, const Block & header_);
@@ -154,8 +154,8 @@ private:
         const RPNBuilderTreeNode & key_node,
         const DataTypePtr & value_type,
         const Field & value_field,
-        RPNElement & out,
-        const RPNBuilderTreeNode * parent);
+        RPNElement & out/*,
+        const RPNBuilderTreeNode * parent*/);
 };
 
 class MergeTreeIndexAggregatorSuccinctRangeFilter final : public IMergeTreeIndexAggregator
