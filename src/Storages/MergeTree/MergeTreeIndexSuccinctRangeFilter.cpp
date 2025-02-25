@@ -572,68 +572,80 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
 {
     std::vector<bool> rpn_stack;
 
-    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "alwaysUnknownOrTrue");
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "alwaysUnknownOrTrue");
 
     for (const auto & element : rpn)
     {
-        // if (element.function == RPNElement::FUNCTION_UNKNOWN)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_UNKNOWN");
-        // }
-        // else if (element.function == RPNElement::ALWAYS_TRUE)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "ALWAYS_TRUE");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_EQUALS)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_EQUALS");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_NOT_EQUALS)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT_EQUALS");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_HAS)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_HAS_ANY)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS_ANY");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_HAS_ALL)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS_ALL");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_IN)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_IN");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_NOT_IN)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT_IN");
-        // }
-        // else if (element.function == RPNElement::ALWAYS_FALSE)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "ALWAYS_FALSE");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_NOT)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_AND)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_AND");
-        // }
-        // else if (element.function == RPNElement::FUNCTION_OR)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_OR");
-        // } else if (element.function == RPNElement::FUNCTION_GREATER)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_GREATER");
-        // } else if (element.function == RPNElement::FUNCTION_LESS)
-        // {
-        //     LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_LESS");
-        // }
+        if (element.function == RPNElement::FUNCTION_UNKNOWN)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_UNKNOWN");
+        }
+        else if (element.function == RPNElement::ALWAYS_TRUE)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "ALWAYS_TRUE");
+        }
+        else if (element.function == RPNElement::FUNCTION_EQUALS)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_EQUALS");
+        }
+        else if (element.function == RPNElement::FUNCTION_NOT_EQUALS)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT_EQUALS");
+        }
+        else if (element.function == RPNElement::FUNCTION_HAS)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS");
+        }
+        else if (element.function == RPNElement::FUNCTION_HAS_ANY)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS_ANY");
+        }
+        else if (element.function == RPNElement::FUNCTION_HAS_ALL)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_HAS_ALL");
+        }
+        else if (element.function == RPNElement::FUNCTION_IN)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_IN");
+        }
+        else if (element.function == RPNElement::FUNCTION_NOT_IN)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT_IN");
+        }
+        else if (element.function == RPNElement::ALWAYS_FALSE)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "ALWAYS_FALSE");
+        }
+        else if (element.function == RPNElement::FUNCTION_NOT)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_NOT");
+        }
+        else if (element.function == RPNElement::FUNCTION_AND)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_AND");
+        }
+        else if (element.function == RPNElement::FUNCTION_OR)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_OR");
+        }
+        else if (element.function == RPNElement::FUNCTION_GREATER)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_GREATER");
+        }
+        else if (element.function == RPNElement::FUNCTION_LESS)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_LESS");
+        }
+        else if (element.function == RPNElement::FUNCTION_GREATER_OR_EQUALS)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_GREATER_OR_EQUALS");
+        }
+        else if (element.function == RPNElement::FUNCTION_LESS_OR_EQUALS)
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexConditionSuccinctRangeFilter"), "FUNCTION_LESS_OR_EQUALS");
+        }
+        else
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected function type in KeyCondition::RPNElement");
 
         if (element.function == RPNElement::FUNCTION_UNKNOWN
             || element.function == RPNElement::ALWAYS_TRUE)
@@ -650,7 +662,8 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
             || element.function == RPNElement::ALWAYS_FALSE
             || element.function == RPNElement::FUNCTION_GREATER
             || element.function == RPNElement::FUNCTION_LESS
-            || element.function == RPNElement::FUNCTION_BETWEEN)
+            || element.function == RPNElement::FUNCTION_LESS_OR_EQUALS
+            || element.function == RPNElement::FUNCTION_GREATER_OR_EQUALS)
         {
             rpn_stack.push_back(false);
         }
@@ -661,8 +674,10 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
         else if (element.function == RPNElement::FUNCTION_AND)
         {
             auto arg1 = rpn_stack.back();
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "arg1 {}", arg1);
             rpn_stack.pop_back();
             auto arg2 = rpn_stack.back();
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "arg2 {}", arg2);
             rpn_stack.back() = arg1 && arg2;
         }
         else if (element.function == RPNElement::FUNCTION_OR)
@@ -706,7 +721,8 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
             || element.function == RPNElement::FUNCTION_HAS_ALL
             || element.function == RPNElement::FUNCTION_GREATER
             || element.function == RPNElement::FUNCTION_LESS
-            || element.function == RPNElement::FUNCTION_BETWEEN)
+            || element.function == RPNElement::FUNCTION_LESS_OR_EQUALS
+            || element.function == RPNElement::FUNCTION_GREATER_OR_EQUALS)
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
             // bool match_rows = true;
@@ -880,7 +896,9 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
         function_name == "hasAny" ||
         function_name == "hasAll" ||
         function_name == "less" ||
-        function_name == "greater") // Add geq, leq
+        function_name == "greater" ||
+        function_name == "greaterOrEquals" ||
+        function_name == "lessOrEquals")
     {
         Field const_value;
         DataTypePtr const_type;
@@ -1113,8 +1131,8 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
         }
         else if (function_name == "greaterOrEquals" || function_name == "lessOrEquals")
         {
-            // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "between");
-            out.function = function_name == "greater" ? RPNElement::FUNCTION_GREATER_OR_EQUALS : RPNElement::FUNCTION_LESS_OR_EQUALS;
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "between");
+            out.function = function_name == "greaterOrEquals" ? RPNElement::FUNCTION_GREATER_OR_EQUALS : RPNElement::FUNCTION_LESS_OR_EQUALS;
             // out.predicate.emplace_back(std::make_pair(position, value_field));
             return true;
         }
