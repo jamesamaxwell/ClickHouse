@@ -132,6 +132,7 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
 
         surfs.push_back(surf);
     }
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "Constructor surfs size: {}", surfs.size());
 }
 
 /**
@@ -249,16 +250,19 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
     : ds_ratio(ds_ratio_), num_columns(num_columns_)
 {
     total_rows = 0;
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter second constructor yet to be implemented {}", num_columns);
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter second constructor {}", num_columns_);
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "ds_ratio {}", ds_ratio);
+    for (size_t column = 0; column < num_columns_; ++column)
+        surfs.push_back(std::make_shared<SuccinctRangeFilter>(nullptr, ds_ratio));
 }
 
 bool MergeTreeIndexGranuleSuccinctRangeFilter::empty() const
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "empty granule");
+    bool empty = surfs.empty();
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "empty granule {}", empty);
     /// One possible definition:
     /// Return true if we haven't added any rows yet, or if no filters exist.
-    return surfs.empty();
+    return empty;
 }
 
 void MergeTreeIndexGranuleSuccinctRangeFilter::serializeBinary(WriteBuffer & ostr) const
@@ -397,6 +401,8 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
     readVarUInt(sparse_nodes, istr);
     readVarUInt(s_values, istr);
 
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "total_rows: {} dense_nodes: {} d_values: {} sparse_nodes: {} s_values: {}", total_rows, dense_nodes, d_values, sparse_nodes, s_values);
+
     size_t d_labels_size = dense_nodes * sizeof(std::bitset<256>);
     size_t d_has_child_size = dense_nodes * sizeof(std::bitset<256>);
     size_t d_is_prefix_key_size = dense_nodes * sizeof(bool);
@@ -432,11 +438,11 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
             d_has_child_size);
     offset += d_has_child_size;
 
-    surf->getFilter().dense.d_isPrefixKey.resize(d_is_prefix_key_size * 8);
-    for (size_t i = 0; i < d_is_prefix_key_size * 8 && i < surf->getFilter().dense.d_isPrefixKey.size(); i++) {
+    surf->getFilter().dense.d_isPrefixKey.resize(d_is_prefix_key_size);
+    for (size_t i = 0; i < d_is_prefix_key_size && i < surf->getFilter().dense.d_isPrefixKey.size(); i++) {
         surf->getFilter().dense.d_isPrefixKey[i] = (buffer[offset + (i / 8)] >> (i % 8)) & 1;
     }
-    offset += d_is_prefix_key_size;
+    offset += (d_is_prefix_key_size + 7) / 8;
 
     surf->getFilter().dense.d_values.resize(d_values_size / sizeof(uint64_t));
     memcpy(surf->getFilter().dense.d_values.data(),
@@ -450,17 +456,17 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
            s_labels_size);
     offset += s_labels_size;
 
-    surf->getFilter().sparse.s_hasChild.resize(s_has_child_size * 8);
+    surf->getFilter().sparse.s_hasChild.resize(s_has_child_size);
     for (size_t i = 0; i < s_has_child_size * 8 && i < surf->getFilter().sparse.s_hasChild.size(); i++) {
         surf->getFilter().sparse.s_hasChild[i] = (buffer[offset + (i / 8)] >> (i % 8)) & 1;
     }
-    offset += s_has_child_size;
+    offset += (s_has_child_size + 7) / 8;
 
-    surf->getFilter().sparse.s_LOUDS.resize(s_louds_size * 8);
+    surf->getFilter().sparse.s_LOUDS.resize(s_louds_size);
     for (size_t i = 0; i < s_louds_size * 8 && i < surf->getFilter().sparse.s_LOUDS.size(); i++) {
         surf->getFilter().sparse.s_LOUDS[i] = (buffer[offset + (i / 8)] >> (i % 8)) & 1;
     }
-    offset += s_louds_size;
+    offset += (s_louds_size + 7) / 8;
 
     surf->getFilter().sparse.s_values.resize(s_values_size / sizeof(uint64_t));
     memcpy(surf->getFilter().sparse.s_values.data(),
@@ -468,71 +474,70 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
            s_values_size);
     offset += s_values_size;
     
-    LOG_DEBUG(getLogger("MergeTreeIndexGranuleSuccinctRangeFilter"), "deserialized LOUDS:");
-    LOUDSdsTrie &trie = surf->getFilter();
+    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "deserialized LOUDS:");
+    // LOUDSdsTrie &trie = surf->getFilter();
 
+    // for (size_t i = 0; i < trie.dense.d_labels.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, trie.dense.d_labels[i].to_string());
+    // }
+    // for (size_t i = 0; i < trie.dense.d_hasChild.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, trie.dense.d_hasChild[i].to_string());
+    // }
+    // for (size_t i = 0; i < trie.dense.d_isPrefixKey.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, trie.dense.d_isPrefixKey[i]);
+    // }
+    // for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, trie.dense.d_values[i]);
+    // }
+    // for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
+    // {
+    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.dense.d_values[i]);
+    //     if (buffer_ptr)
+    //     {
+    //         std::vector<char> buffer0 = *buffer_ptr;
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer0);
+    //     }
+    //     else
+    //     {
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
+    //     }
 
-    for (size_t i = 0; i < trie.dense.d_labels.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, trie.dense.d_labels[i].to_string());
-    }
-    for (size_t i = 0; i < trie.dense.d_hasChild.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, trie.dense.d_hasChild[i].to_string());
-    }
-    for (size_t i = 0; i < trie.dense.d_isPrefixKey.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, trie.dense.d_isPrefixKey[i]);
-    }
-    for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, trie.dense.d_values[i]);
-    }
-    for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
-    {
-        std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.dense.d_values[i]);
-        if (buffer_ptr)
-        {
-            std::vector<char> buffer0 = *buffer_ptr;
-            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer0);
-        }
-        else
-        {
-            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
-        }
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, trie.dense.d_values[i]);
+    // }
 
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, trie.dense.d_values[i]);
-    }
-
-    for (size_t i = 0; i < trie.sparse.s_labels.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, trie.sparse.s_labels[i]);
-    }
-    for (size_t i = 0; i < trie.sparse.s_hasChild.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, trie.sparse.s_hasChild[i]);
-    }
-    for (size_t i = 0; i < trie.sparse.s_LOUDS.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, trie.sparse.s_LOUDS[i]);
-    }
-    for (size_t i = 0; i < trie.sparse.s_values.size(); ++i)
-    {
-        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, trie.sparse.s_values[i]);
-    }
-    for (size_t i = 0; i < trie.sparse.s_values.size(); ++i)
-    {
-        std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.sparse.s_values[i]);
-        if (buffer_ptr)
-        {
-            std::vector<char> buffer0 = *buffer_ptr;
-            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, buffer0);
-        }
-        else
-        {
-            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
-        }
-    }
+    // for (size_t i = 0; i < trie.sparse.s_labels.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, trie.sparse.s_labels[i]);
+    // }
+    // for (size_t i = 0; i < trie.sparse.s_hasChild.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, trie.sparse.s_hasChild[i]);
+    // }
+    // for (size_t i = 0; i < trie.sparse.s_LOUDS.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, trie.sparse.s_LOUDS[i]);
+    // }
+    // for (size_t i = 0; i < trie.sparse.s_values.size(); ++i)
+    // {
+    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, trie.sparse.s_values[i]);
+    // }
+    // for (size_t i = 0; i < trie.sparse.s_values.size(); ++i)
+    // {
+    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.sparse.s_values[i]);
+    //     if (buffer_ptr)
+    //     {
+    //         std::vector<char> buffer0 = *buffer_ptr;
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, buffer0);
+    //     }
+    //     else
+    //     {
+    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
+    //     }
+    // }
 }
 
 void fillingSuccinctRangeFilter(SuccinctRangeFilterPtr & surf)
@@ -644,7 +649,8 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::alwaysUnknownOrTrue() const
             || element.function == RPNElement::FUNCTION_NOT_IN
             || element.function == RPNElement::ALWAYS_FALSE
             || element.function == RPNElement::FUNCTION_GREATER
-            || element.function == RPNElement::FUNCTION_LESS)
+            || element.function == RPNElement::FUNCTION_LESS
+            || element.function == RPNElement::FUNCTION_BETWEEN)
         {
             rpn_stack.push_back(false);
         }
@@ -683,7 +689,6 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
     {
         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "filters not empty");
     }
-    
 
     for (const auto & element : rpn)
     {
@@ -698,7 +703,10 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
             || element.function == RPNElement::FUNCTION_NOT_EQUALS
             || element.function == RPNElement::FUNCTION_HAS
             || element.function == RPNElement::FUNCTION_HAS_ANY
-            || element.function == RPNElement::FUNCTION_HAS_ALL)
+            || element.function == RPNElement::FUNCTION_HAS_ALL
+            || element.function == RPNElement::FUNCTION_GREATER
+            || element.function == RPNElement::FUNCTION_LESS
+            || element.function == RPNElement::FUNCTION_BETWEEN)
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
             // bool match_rows = true;
@@ -1100,6 +1108,13 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "greater or less");
             out.function = function_name == "greater" ? RPNElement::FUNCTION_GREATER : RPNElement::FUNCTION_LESS;
+            // out.predicate.emplace_back(std::make_pair(position, value_field));
+            return true;
+        }
+        else if (function_name == "greaterOrEquals" || function_name == "lessOrEquals")
+        {
+            // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "between");
+            out.function = function_name == "greater" ? RPNElement::FUNCTION_GREATER_OR_EQUALS : RPNElement::FUNCTION_LESS_OR_EQUALS;
             // out.predicate.emplace_back(std::make_pair(position, value_field));
             return true;
         }

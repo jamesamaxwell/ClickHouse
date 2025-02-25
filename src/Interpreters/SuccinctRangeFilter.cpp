@@ -77,8 +77,9 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     surf.sparse = LOUDSSparseTrie();
 
     if (!root)
-        return; // empty trie => nothing to do
-
+    {
+        return;
+    }
 
     // ------------------------------------------------------------
     // PHASE 0: Construct d_values and s_values

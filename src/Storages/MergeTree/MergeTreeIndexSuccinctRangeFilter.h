@@ -93,6 +93,7 @@ public:
             /// Atoms of a Boolean expression.
             FUNCTION_GREATER,
             FUNCTION_LESS,
+            FUNCTION_BETWEEN,
             FUNCTION_GREATER_OR_EQUALS,
             FUNCTION_LESS_OR_EQUALS,
             FUNCTION_EQUALS, // Can I delete these?
