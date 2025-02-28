@@ -17,6 +17,225 @@ namespace ErrorCodes
     extern const int BAD_ARGUMENTS;
 }
 
+// Builds the LOUDS-DS structure from a trie.
+// void buildLOUDSDS(std::unique_ptr<TrieNode> & root, size_t l_depth) {
+//     // Here, you would traverse the trie and fill in surf.dense and surf.sparse.
+//     // Also, compute l_depth using the ratio R (default R=64) as described.
+//     l_depth = l_depth;
+//     // For illustration, we leave this unimplemented.
+// }
+
+
+// TODO: replace the loop with a specialized rank data structure
+// Compute the child position in the dense part using a rank/select operation.
+size_t SuccinctRangeFilter::childPositionDense(size_t currentPos, uint8_t label, size_t level) const
+{
+    // Ensure the level is valid.
+    if (level >= surf.dense.d_hasChild.size())
+    {
+        throw std::out_of_range("childPositionDense: level out of range");
+    }
+    
+    // Get the bitset representing the "hasChild" flags at this level.
+    const std::bitset<256>& hasChild = surf.dense.d_hasChild[level];
+    
+    // Compute the rank: count the number of bits set (i.e. children present) in positions [0, label)
+    size_t rank = 0;
+    for (size_t i = 0; i < label; ++i)
+    {
+        if (hasChild.test(i))
+            ++rank;
+    }
+    
+    // Check if the target label itself exists as a child.
+    if (!hasChild.test(label))
+    {
+        // In a well-formed trie, this function should only be called when the label exists.
+        throw std::invalid_argument("childPositionDense: label not found in hasChild bitset");
+    }
+    
+    // The new child node's position in the next level is computed by adding the rank to the current position.
+    return currentPos + rank;
+}
+
+
+// For the sparse part, compute the node boundaries.
+size_t SuccinctRangeFilter::getSparseNodeStart(size_t pos) const
+{
+    // If pos is 0 or out-of-bounds, return pos as it must be a node start.
+    if (pos == 0 || pos >= surf.sparse.s_LOUDS.size())
+        return pos;
+
+    // Walk backward until a node boundary is found.
+    // A node boundary is indicated by a true value in s_LOUDS.
+    while (pos > 0 && !surf.sparse.s_LOUDS[pos])
+    {
+        pos--;
+    }
+    return pos;
+}
+
+
+size_t SuccinctRangeFilter::getSparseNodeEnd(size_t pos) const
+{
+    // If pos is out of bounds, return pos.
+    if (pos >= surf.sparse.s_labels.size())
+        return pos;
+    
+    // Starting from the next position, search for the next node boundary.
+    size_t i = pos + 1;
+    while (i < surf.sparse.s_labels.size() && !surf.sparse.s_LOUDS[i])
+    {
+        ++i;
+    }
+    // 'i' is now the index of the next node's start (or the end of s_labels).
+    return i;
+}
+
+size_t SuccinctRangeFilter::rankTrue(const std::vector<bool>& vec, size_t pos) const {
+    size_t count = 0;
+    // Ensure we don't go past the vector size.
+    for (size_t i = 0; i < pos && i < vec.size(); ++i) {
+        if (vec[i]) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+// Helper: find the index of the count-th false in 'vec'.
+// count is 1-indexed; i.e. count == 1 returns the index of the first false.
+size_t SuccinctRangeFilter::selectFalse(const std::vector<bool>& vec, size_t count) const {
+    size_t zeroCount = 0;
+    for (size_t i = 0; i < vec.size(); ++i) {
+        if (!vec[i]) {
+            ++zeroCount;
+            if (zeroCount == count)
+                return i;
+        }
+    }
+    // If not found, return vec.size() (could also throw an error in production code).
+    return vec.size();
+}
+
+// TODO: replace the loop with a specialized rank data structure
+// Compute the child position in the sparse part.
+size_t SuccinctRangeFilter::childPositionSparse(size_t currentPos) const
+{
+    // Compute the number of true bits in s_hasChild from index 0 to currentPos (inclusive).
+    // This gives the "node index" among those nodes that have children.
+    size_t num = rankTrue(surf.sparse.s_hasChild, currentPos + 1);
+
+    // In our LOUDS encoding for the sparse part, a false bit in s_LOUDS marks the end of a node.
+    // The children of the current node start immediately after the (num+1)-th false.
+    size_t boundaryIndex = selectFalse(surf.sparse.s_LOUDS, num + 1);
+
+    // The child node's starting position in s_labels is one position after the boundary.
+    return boundaryIndex + 1;
+}
+
+// Find the smallest label in the dense node at [currentPos, ...) that is >= target.
+size_t SuccinctRangeFilter::findLowerBoundInDense(/*size_t currentPos, */size_t level, uint8_t target) const {
+    const std::bitset<256>& labels = surf.dense.d_labels[level];
+    // Search for the next set bit starting at 'target'.
+    for (size_t b = target; b < 256; ++b) {
+        if (labels.test(b))
+            return b;  // b is valid (0..255)
+    }
+    // Return 256 as a sentinel value indicating no label was found.
+    return 256;
+}
+// Check whether there is a next label in the node at the given level.
+bool SuccinctRangeFilter::canMoveNext(const Iterator & iter, size_t level) const
+{
+    // Check for dense node.
+    if (level < l_depth)
+    {
+        // In the dense representation, the current position is the label value.
+        uint16_t currentLabel = iter.levelPositions[level];
+        // Scan for the next set bit (label) in the bitset.
+        for (uint16_t next = currentLabel + 1; next < 256; ++next)
+        {
+            if (surf.dense.d_labels[level].test(next))
+                return true;
+        }
+        return false;
+    }
+    else
+    {
+        // For sparse nodes, iter.levelPositions[level] is an index into s_labels.
+        size_t currentPos = iter.levelPositions[level];
+        // Get the start and end boundaries of the current sparse node.
+        // size_t nodeStart = getSparseNodeStart(currentPos);
+        size_t nodeEnd = getSparseNodeEnd(currentPos);
+        // If there's another label in the node after currentPos, we can move next.
+        return (currentPos + 1 < nodeEnd);
+    }
+}
+
+
+// Given a current position in a node, return the next position.
+size_t SuccinctRangeFilter::nextPosition(size_t pos, size_t level) const
+{
+    // Dense levels: use the bitset representing labels at this level.
+    if (level < l_depth)
+    {
+        const std::bitset<256>& labels = surf.dense.d_labels[level];
+        // Search for the next set bit after 'pos'.
+        for (size_t i = pos + 1; i < 256; ++i)
+        {
+            if (labels.test(i))
+            {
+                return i;
+            }
+        }
+        // No next label found in this dense node: return an invalid index.
+        return std::numeric_limits<size_t>::max();
+    }
+    else
+    {
+        // Sparse levels: assume that labels for a node are stored contiguously in s_labels.
+        // The LOUDS bitvector (s_LOUDS) marks the beginning of a new node (true indicates a new node).
+        size_t next = pos + 1;
+        if (next < surf.sparse.s_labels.size() && !surf.sparse.s_LOUDS[next])
+        {
+            // Next position is within the current node.
+            return next;
+        }
+        // No next label exists in the current node.
+        return surf.sparse.s_labels.size(); // using vector size as an invalid marker.
+    }
+}
+
+// Check whether the node at the given position and level has a child.
+bool SuccinctRangeFilter::hasChild(size_t pos, size_t level) const
+{
+    if (level < l_depth) {
+        // For dense nodes, assume pos maps directly to a label index.
+        return surf.dense.d_hasChild[level].test(pos);
+    }
+    else {
+        return surf.sparse.s_hasChild[pos];
+    }
+}
+
+// Get the left-most child position for a given node.
+size_t SuccinctRangeFilter::leftMostChild(size_t pos, size_t level) const
+{
+    // In a dense node, find the first label that is set.
+    if (level < l_depth) {
+        for (uint16_t b = 0; b < 256; b++) {
+            if (surf.dense.d_labels[level].test(b))
+                return b;  // simplified: returning label value as position
+        }
+    }
+    else {
+        // For sparse, assume the left-most child is the next element.
+        return pos + 1;
+    }
+    return pos;
+}
+
 // SuccinctRangeFilter::SuccinctRangeFilter(size_t ds_ratio_)
 // {
 //     ds_ratio = ds_ratio_;
@@ -69,8 +288,9 @@ size_t SuccinctRangeFilter::getWriteSize()
     return louds_dense_size + louds_sparse_size;
 }
 
-SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t l_depth) // TODO: change this so that it make full dense and sparse and then finds depth
+SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t l_depth_) // TODO: change this so that it make full dense and sparse and then finds depth
 {
+    l_depth = l_depth_;
     // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "SuccinctRangeFilter");
     // Clear existing data
     surf.dense = LOUDSDenseTrie();
@@ -419,6 +639,162 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
     //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
     //     }
     // }
+}
+
+std::optional<uint64_t> SuccinctRangeFilter::ExactKeySearch(const std::string & key) const {
+    size_t level = 0;
+    // Starting positions in the dense or sparse arrays.
+    size_t posDense = 0;   // pointer into the current dense level (conceptually)
+    size_t posSparse = 0;  // pointer into the sparse part (once the cutoff is reached)
+    
+    // First, search the dense portion (levels 0 .. cutoff-1).
+    for (size_t i = 0; i < key.size() && level < l_depth; i++, level++) {
+        uint8_t target = static_cast<uint8_t>(key[i]);
+        // In the current dense level, check if the label exists.
+        if (!surf.dense.d_labels[level].test(target))
+            return std::nullopt; // key byte not found
+        // Check if this label has a child.
+        if (!surf.dense.d_hasChild[level].test(target)) {
+            // Leaf reached in dense portion; if the key length exactly matches, return its value.
+            if (i == key.size() - 1 && surf.dense.d_isPrefixKey[posDense])
+                return surf.dense.d_values[posDense];
+            else
+                return std::nullopt;
+        }
+        // Otherwise, update posDense using a (hypothetical) rank/select on d_hasChild.
+        posDense = childPositionDense(posDense, target, level);
+    }
+    
+    // If key remains and we are in the sparse portion:
+    for (size_t i = level; i < key.size(); i++, level++) {
+        uint8_t target = static_cast<uint8_t>(key[i]);
+        // Determine the boundaries of the current node in the sparse arrays.
+        size_t nodeStart = getSparseNodeStart(posSparse);
+        size_t nodeEnd = getSparseNodeEnd(posSparse);
+        bool found = false;
+        for (size_t j = nodeStart; j < nodeEnd; j++) {
+            if (surf.sparse.s_labels[j] == target) {
+                found = true;
+                // If no child exists, then we have reached a leaf.
+                if (!surf.sparse.s_hasChild[j])
+                    return surf.sparse.s_values[j];
+                // Otherwise, update posSparse to the child node position.
+                posSparse = childPositionSparse(j);
+                break;
+            }
+        }
+        if (!found)
+            return std::nullopt;
+    }
+    
+    // If the loop completes exactly, then the key exactly matched a prefix.
+    // Check the final node’s flag and return its value if present.
+    if (level < l_depth) {
+        if (surf.dense.d_isPrefixKey[posDense])
+            return surf.dense.d_values[posDense];
+    } else {
+        // (Assume similar handling in the sparse portion.)
+        // For brevity, we return nullopt if the node is not a valid key.
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const {
+    Iterator iter;
+    size_t level = 0;
+    size_t posDense = 0;   // current pointer in dense part
+    size_t posSparse = 0;  // current pointer in sparse part
+    
+    // Process dense levels.
+    for (; level < key.size() && level < l_depth; level++) {
+        uint8_t target = static_cast<uint8_t>(key[level]);
+        // In a dense node, find the smallest label >= target.
+        size_t candidate = findLowerBoundInDense(/*posDense, */level, target);
+        if (candidate == 256) { // not found in current node; need to backtrack
+            // For simplicity, mark iterator invalid.
+            iter.valid = false;
+            return iter;
+        }
+        iter.levelPositions.push_back(posDense); // store current position (for illustration)
+        // If candidate does not have a child, we have reached a leaf.
+        if (!surf.dense.d_hasChild[level].test(candidate)) {
+            iter.currentLevel = level;
+            return iter;
+        }
+        posDense = childPositionDense(posDense, candidate, level);
+    }
+    
+    // Process sparse levels.
+    for (; level < key.size(); level++) {
+        uint8_t target = static_cast<uint8_t>(key[level]);
+        size_t nodeStart = getSparseNodeStart(posSparse);
+        size_t nodeEnd = getSparseNodeEnd(posSparse);
+        // uint8_t candidate = 255;
+        size_t candidatePos = 0;
+        bool found = false;
+        for (size_t j = nodeStart; j < nodeEnd; j++) {
+            uint8_t label = surf.sparse.s_labels[j];
+            if (label >= target) {
+                // candidate = label;
+                candidatePos = j;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            iter.valid = false;
+            return iter;
+        }
+        iter.levelPositions.push_back(candidatePos);
+        if (!surf.sparse.s_hasChild[candidatePos]) {
+            iter.currentLevel = level;
+            return iter;
+        }
+        posSparse = childPositionSparse(candidatePos);
+    }
+    
+    iter.currentLevel = level;
+    return iter;
+}
+
+bool SuccinctRangeFilter::MoveToNext(Iterator & iter) const {
+    // Start from the current leaf position and try to move forward in the node.
+    size_t level = iter.currentLevel;
+    // Attempt to find a next label in the current node.
+    if (canMoveNext(iter, level)) {
+        // Move within the same node.
+        iter.levelPositions[level] = nextPosition(iter.levelPositions[level], level);
+        // Descend to the left-most key in the subtree.
+        while (hasChild(iter.levelPositions[level], level)) {
+            level++;
+            size_t childPos = leftMostChild(iter.levelPositions[level - 1], level);
+            iter.levelPositions.push_back(childPos);
+        }
+        iter.currentLevel = level;
+        return true;
+    }
+    else {
+        // Backtrack: move up until we find a node where we can advance.
+        while (level > 0) {
+            level--;
+            if (canMoveNext(iter, level)) {
+                iter.levelPositions[level] = nextPosition(iter.levelPositions[level], level);
+                // Remove deeper levels and descend again.
+                iter.levelPositions.resize(level + 1);
+                while (hasChild(iter.levelPositions[level], level)) {
+                    level++;
+                    size_t childPos = leftMostChild(iter.levelPositions[level - 1], level);
+                    iter.levelPositions.push_back(childPos);
+                }
+                iter.currentLevel = level;
+                return true;
+            }
+        }
+    }
+    // If we cannot backtrack further, we have reached the end.
+    iter.valid = false;
+    return false;
 }
 
 }

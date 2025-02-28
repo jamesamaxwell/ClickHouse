@@ -116,7 +116,7 @@ public:
         RPNElement(Function function_ = FUNCTION_UNKNOWN) : function(function_) {} /// NOLINT
 
         Function function = FUNCTION_UNKNOWN;
-        std::vector<std::pair<size_t, ColumnPtr>> predicate; // can this be removed?
+        std::vector<std::pair<size_t, ColumnPtr>> predicate;
     };
 
     MergeTreeIndexConditionSuccinctRangeFilter(const ActionsDAG * filter_actions_dag, ContextPtr context_, const Block & header_);

@@ -495,12 +495,12 @@ void MergeTreeIndexGranuleSuccinctRangeFilter::deserializeBinary(ReadBuffer & is
     // }
     // for (size_t i = 0; i < trie.dense.d_values.size(); ++i)
     // {
-    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.dense.d_values[i]);
-    //     if (buffer_ptr)
-    //     {
-    //         std::vector<char> buffer0 = *buffer_ptr;
-    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer0);
-    //     }
+        // std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(trie.dense.d_values[i]);
+        // if (buffer_ptr)
+        // {
+        //     std::vector<char> buffer0 = *buffer_ptr;
+        //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer0);
+        // }
     //     else
     //     {
     //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
@@ -725,6 +725,41 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
             || element.function == RPNElement::FUNCTION_GREATER_OR_EQUALS)
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
+            const auto & predicate = element.predicate;
+            for (size_t index = 0; index < predicate.size(); ++index)
+            {
+                const auto & query_index_hash = predicate[index];
+                // const auto & filter = filters[query_index_hash.first];
+                const ColumnPtr & hash_column = query_index_hash.second;
+                const auto surf = filters[0];
+                auto far_key_match = surf->ExactKeySearch("far");
+                if (far_key_match.has_value())
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "far key match: {}", far_key_match.value());
+                else
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "far key match: none");
+
+
+                const IColumn * hash_column2 = &*hash_column;
+
+                const auto * const_column = typeid_cast<const ColumnConst *>(hash_column2);
+                // const auto * non_const_column = typeid_cast<const ColumnUInt64 *>(hash_column2);
+
+                if (const_column)
+                {
+                    // rpn_stack.back() = maybeTrueOnSuccinctRangeFilter(&*hash_column, filter, element.function);
+                    String * buffer_ptr2 = reinterpret_cast<String*>(const_column->getValue<UInt64>());
+                    if (buffer_ptr2)
+                    {
+                        String buffer1 = *buffer_ptr2;
+                        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "const_column index: {}, value: {}", index, *buffer_ptr2);
+                    }
+                    else
+                        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "const_column index: {}, value error", index);
+                }
+
+                // rpn_stack.back() = maybeTrueOnSuccinctRangeFilter(&*hash_column, filter, element.function);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "non_const_column index: {}", index);
+            }
             // bool match_rows = true;
             // bool match_all = element.function == RPNElement::FUNCTION_HAS_ALL;
             // const auto & predicate = element.predicate;
@@ -764,10 +799,10 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_AND ------------------------------------------------------ ");
 
-            // auto arg1 = rpn_stack.back();
-            // rpn_stack.pop_back();
-            // auto arg2 = rpn_stack.back();
-            // rpn_stack.back() = arg1 & arg2;
+            auto arg1 = rpn_stack.back();
+            rpn_stack.pop_back();
+            auto arg2 = rpn_stack.back();
+            rpn_stack.back() = arg1 & arg2;
         }
         else if (element.function == RPNElement::ALWAYS_TRUE)
         {
@@ -878,7 +913,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseFunction(const RPNBuild
             {
                 if (prepared_set->hasExplicitSetElements())
                 {
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "traverseTreeIn");
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "traverseTreeIn [not implemented properly]");
                     const auto prepared_info = getPreparedSetInfo(prepared_set);
                     if (traverseTreeIn(function_name, lhs_argument, prepared_set, prepared_info.type, prepared_info.column, out))
                         return true;
@@ -1058,9 +1093,12 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
     RPNElement & out/*,
     const RPNBuilderTreeNode * parent*/)
 {
-    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals {} ", function_name);
+    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " traverseTreeEquals {}, value_field type: {} , value_field toString: {}",
+                            function_name, value_field.getTypeName(), toString(value_field));
 
     auto key_column_name = key_node.getColumnName();
+    String * val_ptr = new String(toString(value_field));
+    // auto col = ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1);
 
     if (header.has(key_column_name))
     {
@@ -1085,7 +1123,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
                 if (converted_field.isNull())
                     return false;
 
-                out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), converted_field)));
+                out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
             }
         }
         else if (function_name == "hasAny" || function_name == "hasAll")
@@ -1120,20 +1158,20 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
             out.function = function_name == "hasAny" ?
                 RPNElement::FUNCTION_HAS_ANY :
                 RPNElement::FUNCTION_HAS_ALL;
-            out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithColumn(actual_type, column, 0, column->size())));
+            out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
         }
         else if (function_name == "greater" || function_name == "less")
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "greater or less");
             out.function = function_name == "greater" ? RPNElement::FUNCTION_GREATER : RPNElement::FUNCTION_LESS;
-            // out.predicate.emplace_back(std::make_pair(position, value_field));
+            out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
             return true;
         }
         else if (function_name == "greaterOrEquals" || function_name == "lessOrEquals")
         {
             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "between");
             out.function = function_name == "greaterOrEquals" ? RPNElement::FUNCTION_GREATER_OR_EQUALS : RPNElement::FUNCTION_LESS_OR_EQUALS;
-            // out.predicate.emplace_back(std::make_pair(position, value_field));
+            out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
             return true;
         }
         else
@@ -1148,7 +1186,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
             if (converted_field.isNull())
                 return false;
 
-            out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), converted_field)));
+            out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
         }
 
         return true;
@@ -1173,7 +1211,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
         if (converted_field.isNull())
             return false;
 
-        out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), converted_field)));
+        out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
         return true;
     }
 
@@ -1245,7 +1283,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::traverseTreeEquals(
 
             const auto & index_type = header.getByPosition(position).type;
             const auto actual_type = BloomFilter::getPrimitiveType(index_type);
-            out.predicate.emplace_back(std::make_pair(position, BloomFilterHash::hashWithField(actual_type.get(), const_value)));
+            out.predicate.emplace_back(std::make_pair(position, ColumnConst::create(ColumnUInt64::create(1, reinterpret_cast<uint64_t>(val_ptr)), 1)));
 
             return true;
         }
