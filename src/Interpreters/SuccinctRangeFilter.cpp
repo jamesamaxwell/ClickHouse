@@ -25,6 +25,153 @@ namespace ErrorCodes
 //     // For illustration, we leave this unimplemented.
 // }
 
+// Returns the number of 1 bits in the bit sequence bs[0, pos).
+size_t rank1(const std::vector<bool> & bs, size_t pos)
+{
+    size_t count = 0;
+    // Iterate from the beginning to pos (or until the end of bs).
+    for (size_t i = 0; i < pos && i < bs.size(); ++i)
+    {
+        if (bs[i])
+            ++count;
+    }
+    return count;
+}
+
+// Returns the number of 1 bits in the bit sequence bs[0, pos).
+size_t rank1(const std::bitset<256> & bs, size_t pos)
+{
+    size_t count = 0;
+    for (size_t i = 0; i <= pos && i < 256; ++i) {
+        if (bs[i]) {  // Check if the bit is set
+            ++count;
+        }
+    }
+    return count;
+}
+
+// Computes the number of 1 bits in the bit sequence up to (but not including) absolute bit position 'pos'.
+// The bit sequence is stored in blocks of 256 bits.
+size_t rank1(const std::vector<std::bitset<256>> & bs, size_t pos)
+{
+    size_t block_index = pos / 256; // which std::bitset<256> block
+    size_t bit_index = pos % 256;     // position inside that block
+    size_t rank = 0;
+
+    // Count all 1's in full blocks before block_index.
+    for (size_t i = 0; i < block_index && i < bs.size(); ++i)
+    {
+        rank += bs[i].count();
+    }
+
+    // Count bits in the current block up to bit_index.
+    if (block_index < bs.size())
+    {
+        for (size_t i = 0; i < bit_index && i < 256; ++i)
+        {
+            if (bs[block_index].test(i))
+                ++rank;
+        }
+    }
+    return rank;
+}
+
+// Returns the index of the r-th 0 in the bit sequence 'bs' (0-indexed).
+// If there is no r-th 0, it returns bs.size().
+size_t select0(const std::vector<bool>& bs, size_t r) {
+    size_t count = 0;
+    for (size_t i = 0; i < bs.size(); ++i) {
+        if (!bs[i]) // if the bit is 0
+        {
+            if (count == r)
+                return i;
+            ++count;
+        }
+    }
+    // r is out of bounds: there aren't that many 0's.
+    return bs.size();
+}
+
+size_t select0(const std::vector<std::bitset<256>> & bs, size_t r) {
+    for (size_t block = 0; block < bs.size(); ++block)
+    {
+        size_t count = 256 - bs[block].count();
+        if (r <= count)
+        {
+            // The r-th 1 is within this block.
+            for (size_t i = 0; i < 256; ++i)
+            {
+                if (!bs[block].test(i))
+                {
+                    --r;
+                    if (r == 0)
+                    {
+                        return block * 256 + i;
+                    }
+                }
+            }
+        }
+        else
+        {
+            r -= count;
+        }
+    }
+    // If r is larger than the total number of 1 bits, return an "invalid" position.
+    return bs.size() * 256;
+}
+
+
+// Returns the position (index) of the r-th 1 bit in the bit sequence bs.
+// Here we assume r is 1-indexed (i.e. r == 1 returns the position of the first 1).
+// If r is larger than the number of 1 bits in bs, this function returns bs.size().
+size_t select1(const std::vector<bool> & bs, size_t r)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < bs.size(); ++i)
+    {
+        if (bs[i])
+        {
+            ++count;
+            if (count == r)
+                return i;
+        }
+    }
+    // r is too large; no such 1 bit exists.
+    return bs.size();
+}
+
+
+// Finds the absolute bit position of the r-th 1 bit in the bit sequence.
+// r is assumed to be 1-indexed: r == 1 returns the position of the first 1 bit.
+size_t select1(const std::vector<std::bitset<256>> & bs, size_t r)
+{
+    for (size_t block = 0; block < bs.size(); ++block)
+    {
+        size_t count = bs[block].count();
+        if (r <= count)
+        {
+            // The r-th 1 is within this block.
+            for (size_t i = 0; i < 256; ++i)
+            {
+                if (bs[block].test(i))
+                {
+                    --r;
+                    if (r == 0)
+                    {
+                        return block * 256 + i;
+                    }
+                }
+            }
+        }
+        else
+        {
+            r -= count;
+        }
+    }
+    // If r is larger than the total number of 1 bits, return an "invalid" position.
+    return bs.size() * 256;
+}
+
 
 // TODO: replace the loop with a specialized rank data structure
 // Compute the child position in the dense part using a rank/select operation.
@@ -136,6 +283,7 @@ size_t SuccinctRangeFilter::childPositionSparse(size_t currentPos) const
 
 // Find the smallest label in the dense node at [currentPos, ...) that is >= target.
 size_t SuccinctRangeFilter::findLowerBoundInDense(/*size_t currentPos, */size_t level, uint8_t target) const {
+    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "findLowerBoundInDense {} {}", level, target);
     const std::bitset<256>& labels = surf.dense.d_labels[level];
     // Search for the next set bit starting at 'target'.
     for (size_t b = target; b < 256; ++b) {
@@ -576,69 +724,69 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
         }
     }
 
-    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "LOUDS:");
+    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "LOUDS:");
 
-    // for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
-    // }
-    // for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
-    // }
-    // for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
-    // }
+    for (size_t i = 0; i < surf.dense.d_labels.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_labels: {} {}", i, surf.dense.d_labels[i].to_string());
+    }
+    for (size_t i = 0; i < surf.dense.d_hasChild.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_hasChild: {} {}", i, surf.dense.d_hasChild[i].to_string());
+    }
+    for (size_t i = 0; i < surf.dense.d_isPrefixKey.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_isPrefixKey: {} {}", i, surf.dense.d_isPrefixKey[i]);
+    }
     // for (size_t i = 0; i < surf.dense.d_values.size(); ++i)
     // {
     //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, surf.dense.d_values[i]);
     // }
-    // for (size_t i = 0; i < surf.dense.d_values.size(); ++i)
-    // {
-    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(surf.dense.d_values[i]);
-    //     if (buffer_ptr)
-    //     {
-    //         std::vector<char> buffer = *buffer_ptr;
-    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer);
-    //     }
-    //     else
-    //     {
-    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
-    //     }
+    for (size_t i = 0; i < surf.dense.d_values.size(); ++i)
+    {
+        std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(surf.dense.d_values[i]);
+        if (buffer_ptr)
+        {
+            std::vector<char> buffer = *buffer_ptr;
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, buffer);
+        }
+        // else
+        // {
+        //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} nullptr", i);
+        // }
 
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, surf.dense.d_values[i]);
-    // }
+        // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "d_values: {} {}", i, surf.dense.d_values[i]);
+    }
 
-    // for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
-    // }
-    // for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
-    // }
-    // for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
-    // {
-    //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
-    // }
+    for (size_t i = 0; i < surf.sparse.s_labels.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_labels: {} {}", i, surf.sparse.s_labels[i]);
+    }
+    for (size_t i = 0; i < surf.sparse.s_hasChild.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_hasChild: {} {}", i, surf.sparse.s_hasChild[i]);
+    }
+    for (size_t i = 0; i < surf.sparse.s_LOUDS.size(); ++i)
+    {
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_LOUDS: {} {}", i, surf.sparse.s_LOUDS[i]);
+    }
     // for (size_t i = 0; i < surf.sparse.s_values.size(); ++i)
     // {
     //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, surf.sparse.s_values[i]);
     // }
-    // for (size_t i = 0; i < surf.sparse.s_values.size(); ++i)
-    // {
-    //     std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(surf.sparse.s_values[i]);
-    //     if (buffer_ptr)
-    //     {
-    //         std::vector<char> buffer = *buffer_ptr;
-    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, buffer);
-    //     }
-    //     else
-    //     {
-    //         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
-    //     }
-    // }
+    for (size_t i = 0; i < surf.sparse.s_values.size(); ++i)
+    {
+        std::vector<char> * buffer_ptr = reinterpret_cast<std::vector<char>*>(surf.sparse.s_values[i]);
+        if (buffer_ptr)
+        {
+            std::vector<char> buffer = *buffer_ptr;
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} {}", i, buffer);
+        }
+        // else
+        // {
+        //     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "s_values: {} nullptr", i);
+        // }
+    }
 }
 
 std::optional<uint64_t> SuccinctRangeFilter::ExactKeySearch(const std::string & key) const {
@@ -700,61 +848,289 @@ std::optional<uint64_t> SuccinctRangeFilter::ExactKeySearch(const std::string & 
     return std::nullopt;
 }
 
-Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const {
+Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
+{
+    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "LowerBound {}", key);
     Iterator iter;
+    iter.valid = true;
+
+    // --- Dense Section Backtracking Structures ---
+    struct DenseState {
+        size_t level;     // current dense level (0-based)
+        size_t posDense;  // starting bit position in the dense arrays for this node
+        size_t candidate; // candidate label chosen at this node (0..255)
+    };
+    std::vector<DenseState> denseStack; // one state per dense level
+
+    // --- Sparse Section Backtracking Structures ---
+    struct SparseState {
+        size_t level;       // current level in sparse part (global level: l_depth, l_depth+1, ...)
+        size_t posSparse;   // starting index in sparse arrays for the current node
+        size_t candidatePos; // candidate index in s_labels for this node
+        size_t nodeStart;   // start index of current node in s_labels
+        size_t nodeEnd;     // end index of current node in s_labels
+    };
+    std::vector<SparseState> sparseStack;
+
     size_t level = 0;
-    size_t posDense = 0;   // current pointer in dense part
-    size_t posSparse = 0;  // current pointer in sparse part
-    
-    // Process dense levels.
-    for (; level < key.size() && level < l_depth; level++) {
-        uint8_t target = static_cast<uint8_t>(key[level]);
-        // In a dense node, find the smallest label >= target.
-        size_t candidate = findLowerBoundInDense(/*posDense, */level, target);
-        if (candidate == 256) { // not found in current node; need to backtrack
-            // For simplicity, mark iterator invalid.
-            iter.valid = false;
-            return iter;
+    size_t posDense = 0; // start at root of dense part
+    size_t older_children = 0;
+    size_t new_older_children = 0;
+
+    size_t loop_no = 0;
+        
+    // Process Dense Levels (levels < l_depth and less than key.length)
+    bool prefixExceeded = false;
+    while (level < key.size() && loop_no < 50)
+    {
+        loop_no++;
+        if (level < l_depth)
+        {
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "surf dense level: {}", level);
+            
+            // Use key[level] unless we've already exceeded the key's prefix.
+            uint8_t target = prefixExceeded ? 0 : static_cast<uint8_t>(key[level]);
+            const std::bitset<256> & node_labels = surf.dense.d_labels[(posDense / 256) + older_children];
+        
+            // Determine starting candidate.
+            size_t candidate = target;
+            if (denseStack.size() > level)
+            {
+                // Resume from the saved candidate if backtracking occurred.
+                candidate = denseStack[level].candidate;
+            }
+
+            bool foundCandidate = false;
+            for (; candidate < 256; ++candidate)
+            {
+                if (node_labels.test(candidate))
+                {
+                    foundCandidate = true;
+                    new_older_children = rank1(surf.dense.d_hasChild[(posDense / 256) + older_children], posDense + candidate - 1);
+                    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "candidate: {}", candidate);
+                    LOG_DEBUG(getLogger("SuccinctRangeFilter"), "older_children: {}", new_older_children);
+                    break;
+                }
+            }
+            
+            if (!foundCandidate)
+            {
+                LOG_DEBUG(getLogger("SuccinctRangeFilter"), "no candidate found at level: {}", level);
+                // No candidate found at current level: backtrack.
+                if (level == 0)
+                {
+                    // Cannot backtrack past root.
+                    iter.valid = false;
+                    return iter;
+                }
+                
+                // Pop the state from the previous level.
+                DenseState prev = denseStack.back();
+                denseStack.pop_back();
+                level = prev.level;         // backtrack to parent's level
+                posDense = prev.posDense;   // parent's starting position remains
+                size_t newCandidate = prev.candidate + 1;
+                const std::bitset<256> & parent_labels = surf.dense.d_labels[posDense / 256];
+                bool newFound = false;
+                for (; newCandidate < 256; ++newCandidate)
+                {
+                    if (parent_labels.test(newCandidate))
+                    {
+                        newFound = true;
+                        break;
+                    }
+                }
+                if (!newFound)
+                {
+                    // If the parent's node has no further candidate, continue backtracking further.
+                    continue;
+                }
+                
+                // Save the updated state for the parent's level.
+                DenseState newState;
+                newState.level = level;
+                newState.posDense = posDense;
+                newState.candidate = newCandidate;
+                denseStack.push_back(newState);
+                
+                // If the new candidate exceeds the key character, mark prefixExceeded.
+                if (!prefixExceeded && newCandidate > static_cast<uint8_t>(key[level]))
+                    prefixExceeded = true;
+                
+                // Compute the new child starting position:
+                posDense = 256 * rank1(surf.dense.d_hasChild, posDense + newCandidate);
+                // Reset level to parent's level + 1.
+                ++level;
+                // Record this candidate.
+                iter.levelPositions.push_back(posDense + newCandidate);
+                // Restart loop from this new state.
+                continue;
+            }
+            
+            // Candidate found at current level.
+            if (denseStack.size() <= level)
+            {
+                DenseState s;
+                s.level = level;
+                s.posDense = posDense;
+                s.candidate = candidate;
+                denseStack.push_back(s);
+            }
+            else
+            {
+                denseStack[level].posDense = posDense;
+                denseStack[level].candidate = candidate;
+            }
+            iter.levelPositions.push_back(posDense + candidate);
+            
+            // Update prefixExceeded if this candidate is strictly greater than key[level].
+            if (!prefixExceeded && candidate > static_cast<uint8_t>(key[level]))
+                prefixExceeded = true;
+            
+            // Check whether this candidate has a child.
+            size_t block_index = (posDense / 256) + older_children;
+            size_t bit_offset = posDense % 256;
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "block index: {}, bit offset: {}, candidate: {}", block_index, bit_offset, candidate);
+            bool has_child = surf.dense.d_hasChild[block_index].test(bit_offset + candidate);
+            if (!has_child)
+            {
+                LOG_DEBUG(getLogger("SuccinctRangeFilter"), "no child at dense level: {}", level);
+                // Leaf reached in dense part.
+                size_t pos = posDense + candidate;
+                size_t valuePos = rank1(surf.dense.d_labels, pos)
+                                - rank1(surf.dense.d_hasChild, pos)
+                                + rank1(surf.dense.d_isPrefixKey, pos / 256)
+                                - 1;
+                LOG_DEBUG(getLogger("SuccinctRangeFilter"), "valuePos dense: {}", valuePos);
+                iter.valuePosition = valuePos;
+                iter.currentLevel = level;
+                return iter;
+            }
+            
+            // Descend: compute child's starting position using:
+            // D-ChildNodePos(pos) = 256 * rank1(D-HasChild, pos)
+            posDense = 256 * rank1(surf.dense.d_hasChild, posDense + candidate);
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "new posDense: {}", posDense);
+            older_children = new_older_children;
+            ++level;
         }
-        iter.levelPositions.push_back(posDense); // store current position (for illustration)
-        // If candidate does not have a child, we have reached a leaf.
-        if (!surf.dense.d_hasChild[level].test(candidate)) {
-            iter.currentLevel = level;
-            return iter;
+        else
+        {
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "surf sparse level: {}", level);
         }
-        posDense = childPositionDense(posDense, candidate, level);
     }
-    
-    // Process sparse levels.
-    for (; level < key.size(); level++) {
+
+    size_t posSparse = 0; // start at beginning of sparse part
+
+    // Process Sparse Levels with backtracking.
+    while (level < key.size() && loop_no < 20)
+    {
+        loop_no += 1;
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "surf sparse level: {}", level);
         uint8_t target = static_cast<uint8_t>(key[level]);
         size_t nodeStart = getSparseNodeStart(posSparse);
-        size_t nodeEnd = getSparseNodeEnd(posSparse);
-        // uint8_t candidate = 255;
-        size_t candidatePos = 0;
-        bool found = false;
-        for (size_t j = nodeStart; j < nodeEnd; j++) {
+        size_t nodeEnd   = getSparseNodeEnd(posSparse);
+
+        size_t candidatePos = nodeEnd; // marker for "no candidate"
+        for (size_t j = nodeStart; j < nodeEnd; ++j)
+        {
             uint8_t label = surf.sparse.s_labels[j];
-            if (label >= target) {
-                // candidate = label;
+            if (label >= target)
+            {
                 candidatePos = j;
-                found = true;
+                LOG_DEBUG(getLogger("SuccinctRangeFilter"), "candidatePos: {}", j);
                 break;
             }
         }
-        if (!found) {
-            iter.valid = false;
-            return iter;
+        if (candidatePos == nodeEnd)
+        {
+            // No candidate found in current sparse node: backtrack.
+            if (sparseStack.empty())
+            {
+                iter.valid = false;
+                return iter;
+            }
+            SparseState prev = sparseStack.back();
+            sparseStack.pop_back();
+            level = prev.level;   // backtrack to parent's level in sparse part
+            posSparse = prev.posSparse;
+            size_t newCandidatePos = prev.candidatePos + 1;
+            size_t pNodeStart = prev.nodeStart;
+            size_t pNodeEnd   = prev.nodeEnd;
+            bool newFound = false;
+            for (; newCandidatePos < pNodeEnd; ++newCandidatePos)
+            {
+                if (surf.sparse.s_labels[newCandidatePos] >= static_cast<uint8_t>(key[level]))
+                {
+                    newFound = true;
+                    break;
+                }
+            }
+            if (!newFound)
+            {
+                // Continue backtracking if parent's node has no further candidate.
+                continue;
+            }
+            SparseState newState;
+            newState.level = level;
+            newState.posSparse = posSparse;
+            newState.candidatePos = newCandidatePos;
+            newState.nodeStart = pNodeStart;
+            newState.nodeEnd   = pNodeEnd;
+            sparseStack.push_back(newState);
+            candidatePos = newCandidatePos;
+            // Compute new child's starting position:
+            posSparse = select1(surf.sparse.s_LOUDS, rank1(surf.sparse.s_hasChild, candidatePos) + 1);
+            ++level;
+            iter.levelPositions.push_back(candidatePos);
+            continue;
         }
+        // Candidate found in sparse node.
+        SparseState s;
+        s.level = level;
+        s.posSparse = posSparse;
+        s.candidatePos = candidatePos;
+        s.nodeStart = nodeStart;
+        s.nodeEnd = nodeEnd;
+        sparseStack.push_back(s);
         iter.levelPositions.push_back(candidatePos);
-        if (!surf.sparse.s_hasChild[candidatePos]) {
+
+        // Check if candidate has a child.
+        if (!surf.sparse.s_hasChild[candidatePos])
+        {
             iter.currentLevel = level;
+            // Compute sparse value position:
+            // S-ValuePos(pos) = pos - rank1(S-HasChild, pos) - 1
+            size_t valuePos = candidatePos - rank1(surf.sparse.s_hasChild, candidatePos) - 1;
+            iter.valuePosition = valuePos;
+            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "valuePos sparse: {}", valuePos);
             return iter;
         }
-        posSparse = childPositionSparse(candidatePos);
+
+        // Move down in the sparse part:
+        // S-ChildNodePos(pos) = select1(S-LOUDS, rank1(S-HasChild, pos) + 1)
+        posSparse = select1(surf.sparse.s_LOUDS, rank1(surf.sparse.s_hasChild, candidatePos) + 1);
+        ++level;
     }
-    
+
     iter.currentLevel = level;
+    // Final value position computation.
+    if (level < l_depth)
+    {
+        size_t pos = posDense;
+        size_t valuePos = rank1(surf.dense.d_labels, pos)
+                          - rank1(surf.dense.d_hasChild, pos)
+                          + rank1(surf.dense.d_isPrefixKey, pos / 256)
+                          - 1;
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "valuePos level < l_depth: {}", valuePos);
+        iter.valuePosition = valuePos;
+    }
+    else
+    {
+        size_t valuePos = posSparse - rank1(surf.sparse.s_hasChild, posSparse) - 1;
+        LOG_DEBUG(getLogger("SuccinctRangeFilter"), "valuePos level >= l_depth: {}", valuePos);
+        iter.valuePosition = valuePos;
+    }
     return iter;
 }
 

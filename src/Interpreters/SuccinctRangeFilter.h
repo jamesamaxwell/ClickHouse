@@ -32,9 +32,11 @@ struct Iterator {
     // Trace from root to leaf: one position per level.
     std::vector<size_t> levelPositions;
     // Current level (leaf level)
-    size_t currentLevel;
+    size_t currentLevel = 0;
     // In a full implementation, we’d also store which part (dense vs sparse) we are in.
     bool valid = true;
+
+    size_t valuePosition = 0;
 };
 
 struct BFSItem

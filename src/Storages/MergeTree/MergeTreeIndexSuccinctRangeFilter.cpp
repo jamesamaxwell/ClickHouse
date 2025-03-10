@@ -732,12 +732,20 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
                 // const auto & filter = filters[query_index_hash.first];
                 const ColumnPtr & hash_column = query_index_hash.second;
                 const auto surf = filters[0];
-                auto far_key_match = surf->ExactKeySearch("far");
+                auto far_key_match = surf->ExactKeySearch("spoon");
                 if (far_key_match.has_value())
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "far key match: {}", far_key_match.value());
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "spoon key match: {}", far_key_match.value());
                 else
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "far key match: none");
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "spoon key match: none");
 
+                auto iterator = surf->LowerBound("toq");
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "toq lower bound current level: {}", iterator.currentLevel);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "toq lower bound valid: {}", iterator.valid);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "toq lower bound valuePosition: {}", iterator.valuePosition);
+                for (size_t i = 0; i < iterator.levelPositions.size(); i++)
+                {
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "toq lower bound level position {}: {}", i, iterator.levelPositions[i]);
+                }
 
                 const IColumn * hash_column2 = &*hash_column;
 
