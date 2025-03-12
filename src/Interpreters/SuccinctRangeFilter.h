@@ -33,10 +33,15 @@ struct Iterator {
     std::vector<size_t> levelPositions;
     // Current level (leaf level)
     size_t currentLevel = 0;
-    // In a full implementation, we’d also store which part (dense vs sparse) we are in.
+
     bool valid = true;
 
     size_t valuePosition = 0;
+
+    size_t densePos = 0;
+    size_t sparsePos = 0;
+
+    bool dense = true;
 };
 
 struct BFSItem
