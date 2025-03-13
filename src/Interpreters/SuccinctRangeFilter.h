@@ -32,7 +32,7 @@ struct Iterator {
     // Trace from root to leaf: one position per level.
     std::vector<size_t> levelPositions;
     // Current level (leaf level)
-    size_t currentLevel = 0;
+    size_t currentLevel = 0; // delete this?
 
     bool valid = true;
 

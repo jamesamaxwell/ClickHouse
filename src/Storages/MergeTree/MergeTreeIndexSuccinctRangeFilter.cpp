@@ -732,16 +732,28 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
                 // const auto & filter = filters[query_index_hash.first];
                 const ColumnPtr & hash_column = query_index_hash.second;
                 const auto surf = filters[0];
-                auto far_key_match = surf->ExactKeySearch("spoon");
+                auto far_key_match = surf->ExactKeySearch("fas");
                 if (far_key_match.has_value())
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "spoon key match: {}", far_key_match.value());
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: {}", far_key_match.value());
                 else
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "spoon key match: none");
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: none");
 
-                auto iterator = surf->LowerBound("");
+                std::string key = "fz";
+                auto iterator = surf->LowerBound(key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+
+                key = "f";
+                iterator = surf->LowerBound(key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+                
                 for (size_t i = 0; i < iterator.levelPositions.size(); i++)
                 {
                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound level position {}: {}", i, iterator.levelPositions[i]);
