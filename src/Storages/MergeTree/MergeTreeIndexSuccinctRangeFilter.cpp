@@ -738,7 +738,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
                 else
                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: none");
 
-                std::string key = "fasting";
+                std::string key = "fasting"; // not returning correctly
                 auto iterator = surf->LowerBound(key);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
@@ -753,6 +753,30 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+
+                key = "toq";
+                iterator = surf->LowerBound(key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+
+                key = "p";
+                iterator = surf->LowerBound(key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+
+                key = "so"; // not returning correctly
+                iterator = surf->LowerBound(key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+
+                key = "zzz";
+                iterator = surf->LowerBound(key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
                 
                 for (size_t i = 0; i < iterator.levelPositions.size(); i++)
                 {

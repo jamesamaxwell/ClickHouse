@@ -945,6 +945,11 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
                 }
                 if (!candidate_found)
                 { // 256 ×select1 (D-HasChild, ⌊pos/256⌋) I think this is wrong
+                    if (level == 0)
+                    {
+                        iter.valid = false;
+                        return iter;
+                    }
                     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "backtracking from dense");
                     level--;
                     backtrack = true;
@@ -961,7 +966,8 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
                 iter.dense = false;
                 if (level == l_depth && !backtrack)
                 {
-                    iter.sparsePos = iter.densePos / 256 - surf.dense.d_isPrefixKey.size();
+                    iter.sparsePos = select1(surf.sparse.s_LOUDS, iter.densePos / 256 - surf.dense.d_isPrefixKey.size() + 1);
+                    // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "exact match initial sparse node: {}", iter.densePos / 256 - surf.dense.d_isPrefixKey.size());
                     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "exact match initial sparse pos: {}", iter.sparsePos);
                 }
                 
@@ -986,7 +992,7 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
                         {
                             level++;
                             iter.sparsePos = select1(surf.sparse.s_LOUDS, surf.dense.d_hasChild.size() + rank1(surf.sparse.s_hasChild, iter.sparsePos) + 1);
-                            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "find sparse child at: {}", iter.sparsePos);
+                            LOG_DEBUG(getLogger("SuccinctRangeFilter"), "exact match find sparse child at: {}", iter.sparsePos);
                             new_backtrack = false;
                         }
                         
@@ -1104,7 +1110,7 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
                 iter.dense = false;
                 if (level == l_depth && !backtrack)
                 {
-                    iter.sparsePos = iter.densePos / 256 - surf.dense.d_isPrefixKey.size();
+                    iter.sparsePos = select1(surf.sparse.s_LOUDS, iter.densePos / 256 - surf.dense.d_isPrefixKey.size() + 1);
                     LOG_DEBUG(getLogger("SuccinctRangeFilter"), "initial sparse pos: {}", iter.sparsePos);
                 }
 
@@ -1123,7 +1129,7 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
                     { // select1(S-LOUDS, rank1(S-HasChild, pos) + 1);
                         iter.levelPositions.push_back(1);
                         level++;
-                        iter.sparsePos = select1(surf.sparse.s_LOUDS, rank1(surf.sparse.s_hasChild, iter.sparsePos) + 1);
+                        iter.sparsePos = select1(surf.sparse.s_LOUDS, surf.dense.d_hasChild.size() + rank1(surf.sparse.s_hasChild, iter.sparsePos) + 1);
                         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "find sparse child at: {}", iter.sparsePos);
                         continue;
                     }
