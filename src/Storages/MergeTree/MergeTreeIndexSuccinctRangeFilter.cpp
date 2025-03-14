@@ -738,7 +738,7 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
                 else
                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: none");
 
-                std::string key = "fz";
+                std::string key = "fasting";
                 auto iterator = surf->LowerBound(key);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
