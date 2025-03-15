@@ -704,170 +704,247 @@ bool MergeTreeIndexConditionSuccinctRangeFilter::mayBeTrueOnGranule(const MergeT
     {
         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "filters not empty");
     }
+    const auto surf = filters[0];
 
-    for (const auto & element : rpn)
+    const ColumnPtr & lower_bound_col_ptr = rpn[0].predicate[0].second;
+    const IColumn * column = &*lower_bound_col_ptr;
+    const auto * column_const = typeid_cast<const ColumnConst *>(column);
+    if (column_const)
     {
-        rpn_stack.emplace_back(true, true);
-        if (element.function == RPNElement::FUNCTION_UNKNOWN)
+        String * lower_bound = reinterpret_cast<String*>(column_const->getValue<UInt64>());
+        if (lower_bound)
         {
-            rpn_stack.emplace_back(true, true);
-        }
-        else if (element.function == RPNElement::FUNCTION_IN
-            || element.function == RPNElement::FUNCTION_NOT_IN
-            || element.function == RPNElement::FUNCTION_EQUALS
-            || element.function == RPNElement::FUNCTION_NOT_EQUALS
-            || element.function == RPNElement::FUNCTION_HAS
-            || element.function == RPNElement::FUNCTION_HAS_ANY
-            || element.function == RPNElement::FUNCTION_HAS_ALL
-            || element.function == RPNElement::FUNCTION_GREATER
-            || element.function == RPNElement::FUNCTION_LESS
-            || element.function == RPNElement::FUNCTION_LESS_OR_EQUALS
-            || element.function == RPNElement::FUNCTION_GREATER_OR_EQUALS)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
-            const auto & predicate = element.predicate;
-            for (size_t index = 0; index < predicate.size(); ++index)
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower_bound: {}", *lower_bound);
+
+            const ColumnPtr & upper_bound_col_ptr = rpn[1].predicate[0].second;
+            column = &*upper_bound_col_ptr;
+            column_const = typeid_cast<const ColumnConst *>(column);
+            if (column_const)
             {
-                const auto & query_index_hash = predicate[index];
-                // const auto & filter = filters[query_index_hash.first];
-                const ColumnPtr & hash_column = query_index_hash.second;
-                const auto surf = filters[0];
-                auto far_key_match = surf->ExactKeySearch("fas");
-                if (far_key_match.has_value())
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: {}", far_key_match.value());
-                else
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: none");
-
-                std::string key = "fasting"; // not returning correctly
-                auto iterator = surf->LowerBound(key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
-
-                key = "f";
-                iterator = surf->LowerBound(key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
-
-                key = "toq";
-                iterator = surf->LowerBound(key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
-
-                key = "p";
-                iterator = surf->LowerBound(key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
-
-                key = "so"; // not returning correctly
-                iterator = surf->LowerBound(key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
-
-                key = "zzz";
-                iterator = surf->LowerBound(key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
-                
-                for (size_t i = 0; i < iterator.levelPositions.size(); i++)
+                String * upper_bound = reinterpret_cast<String*>(column_const->getValue<UInt64>());
+                if (upper_bound)
                 {
-                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound level position {}: {}", i, iterator.levelPositions[i]);
-                }
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "upper_bound: {}", *upper_bound);
 
-                const IColumn * hash_column2 = &*hash_column;
-
-                const auto * const_column = typeid_cast<const ColumnConst *>(hash_column2);
-                // const auto * non_const_column = typeid_cast<const ColumnUInt64 *>(hash_column2);
-
-                if (const_column)
-                {
-                    // rpn_stack.back() = maybeTrueOnSuccinctRangeFilter(&*hash_column, filter, element.function);
-                    String * buffer_ptr2 = reinterpret_cast<String*>(const_column->getValue<UInt64>());
-                    if (buffer_ptr2)
+                    auto iterator = surf->LowerBound(*lower_bound);
+                    if (iterator.valid)
                     {
-                        String buffer1 = *buffer_ptr2;
-                        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "const_column index: {}, value: {}", index, *buffer_ptr2);
+                        u_int64_t pointer;
+                        if (iterator.dense)
+                        {
+                            pointer = surf->getFilter().dense.d_values[iterator.valuePosition];
+                        }
+                        else
+                        {
+                            pointer = surf->getFilter().sparse.s_values[iterator.valuePosition];
+                        }
+                        std::vector<char> * key_ptr = reinterpret_cast<std::vector<char>*>(pointer);
+                        std::vector<char> key = *key_ptr;
+                        std::string keyStr(key.begin(), key.end());
+                        
+                        if (keyStr <= *upper_bound)
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            return false;
+                        }
                     }
                     else
-                        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "const_column index: {}, value error", index);
+                    {
+                        return true;
+                    }
                 }
-
-                // rpn_stack.back() = maybeTrueOnSuccinctRangeFilter(&*hash_column, filter, element.function);
-                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "non_const_column index: {}", index);
+                else
+                {
+                    LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "upper_bound: nullptr");
+                    return true;
+                }
             }
-            // bool match_rows = true;
-            // bool match_all = element.function == RPNElement::FUNCTION_HAS_ALL;
-            // const auto & predicate = element.predicate;
-            // for (size_t index = 0; match_rows && index < predicate.size(); ++index)
-            // {
-            //     const auto & query_index_hash = predicate[index];
-            //     const auto & filter = filters[query_index_hash.first];
-            //     const ColumnPtr & hash_column = query_index_hash.second;
-
-            //     match_rows = maybeTrueOnSuccinctRangeFilter(&*hash_column,
-            //                                         filter,
-            //                                         hash_functions,
-            //                                         match_all);
-            // }
-
-            // rpn_stack.emplace_back(match_rows, true);
-            // if (element.function == RPNElement::FUNCTION_NOT_EQUALS || element.function == RPNElement::FUNCTION_NOT_IN)
-            //     rpn_stack.back() = !rpn_stack.back();
-
-        }
-        else if (element.function == RPNElement::FUNCTION_NOT)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_NOT ------------------------------------------------------ ");
-
-//            rpn_stack.back() = !rpn_stack.back();
-        }
-        else if (element.function == RPNElement::FUNCTION_OR)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_OR ------------------------------------------------------ ");
-
-            // auto arg1 = rpn_stack.back();
-            // rpn_stack.pop_back();
-            // auto arg2 = rpn_stack.back();
-            // rpn_stack.back() = arg1 | arg2;
-        }
-        else if (element.function == RPNElement::FUNCTION_AND)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_AND ------------------------------------------------------ ");
-
-            auto arg1 = rpn_stack.back();
-            rpn_stack.pop_back();
-            auto arg2 = rpn_stack.back();
-            rpn_stack.back() = arg1 & arg2;
-        }
-        else if (element.function == RPNElement::ALWAYS_TRUE)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_TRUE ------------------------------------------------------ ");
-
-            // rpn_stack.emplace_back(true, false);
-        }
-        else if (element.function == RPNElement::ALWAYS_FALSE)
-        {
-            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_FALSE ------------------------------------------------------ ");
-
-            //rpn_stack.emplace_back(false, true);
+            else
+            {
+                LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound column not found");
+                return true;
+            }
         }
         else
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected function type in KeyCondition::RPNElement");
+        {
+            LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower_bound: nullptr");
+            return true;
+        }
+    }
+    else
+    {
+        LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound column not found");
+        return true;
     }
 
-    if (rpn_stack.size() != 1)
-        throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected stack size in KeyCondition::mayBeTrueInRange");
+//     for (const auto & element : rpn)
+//     {
+//         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "element.function {}", iind);
+//         iind++;
+//         rpn_stack.emplace_back(true, true);
+//         if (element.function == RPNElement::FUNCTION_UNKNOWN)
+//         {
+//             rpn_stack.emplace_back(true, true);
+//         }
+//         else if (element.function == RPNElement::FUNCTION_IN
+//             || element.function == RPNElement::FUNCTION_NOT_IN
+//             || element.function == RPNElement::FUNCTION_EQUALS
+//             || element.function == RPNElement::FUNCTION_NOT_EQUALS
+//             || element.function == RPNElement::FUNCTION_HAS
+//             || element.function == RPNElement::FUNCTION_HAS_ANY
+//             || element.function == RPNElement::FUNCTION_HAS_ALL
+//             || element.function == RPNElement::FUNCTION_GREATER
+//             || element.function == RPNElement::FUNCTION_LESS
+//             || element.function == RPNElement::FUNCTION_LESS_OR_EQUALS
+//             || element.function == RPNElement::FUNCTION_GREATER_OR_EQUALS)
+//         {
+//             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ first case ------------------------------------------------------ ");
+//             const auto & predicate = element.predicate;
+//             for (size_t index = 0; index < predicate.size(); ++index)
+//             {
+//                 const auto & query_index_hash = predicate[index];
+//                 // const auto & filter = filters[query_index_hash.first];
+//                 const ColumnPtr & hash_column = query_index_hash.second;
+//                 const auto surf = filters[0];
+//                 auto far_key_match = surf->ExactKeySearch("fas");
+//                 if (far_key_match.has_value())
+//                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: {}", far_key_match.value());
+//                 else
+//                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "fas key match: none");
 
-    return rpn_stack[0].can_be_true;
+//                 std::string key = "fasting"; // not returning correctly
+//                 auto iterator = surf->LowerBound(key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+
+//                 key = "f";
+//                 iterator = surf->LowerBound(key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound current level: {}", iterator.currentLevel);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valid: {}", iterator.valid);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+
+//                 key = "toq";
+//                 iterator = surf->LowerBound(key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+
+//                 key = "p";
+//                 iterator = surf->LowerBound(key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+
+//                 key = "so"; // not returning correctly
+//                 iterator = surf->LowerBound(key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+
+//                 key = "zzz";
+//                 iterator = surf->LowerBound(key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound({}):", key);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound dense: {}", iterator.dense);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound valuePosition: {}", iterator.valuePosition);
+                
+//                 for (size_t i = 0; i < iterator.levelPositions.size(); i++)
+//                 {
+//                     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "lower bound level position {}: {}", i, iterator.levelPositions[i]);
+//                 }
+
+//                 const IColumn * hash_column2 = &*hash_column;
+
+//                 const auto * const_column = typeid_cast<const ColumnConst *>(hash_column2);
+//                 // const auto * non_const_column = typeid_cast<const ColumnUInt64 *>(hash_column2);
+
+//                 if (const_column)
+//                 {
+//                     // rpn_stack.back() = maybeTrueOnSuccinctRangeFilter(&*hash_column, filter, element.function);
+//                     String * buffer_ptr2 = reinterpret_cast<String*>(const_column->getValue<UInt64>());
+//                     if (buffer_ptr2)
+//                     {
+//                         String buffer1 = *buffer_ptr2;
+//                         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "const_column index: {}, value: {}", index, *buffer_ptr2);
+//                     }
+//                     else
+//                         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "const_column index: {}, value error", index);
+//                 }
+
+//                 // rpn_stack.back() = maybeTrueOnSuccinctRangeFilter(&*hash_column, filter, element.function);
+//                 LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "non_const_column index: {}", index);
+//             }
+//             // bool match_rows = true;
+//             // bool match_all = element.function == RPNElement::FUNCTION_HAS_ALL;
+//             // const auto & predicate = element.predicate;
+//             // for (size_t index = 0; match_rows && index < predicate.size(); ++index)
+//             // {
+//             //     const auto & query_index_hash = predicate[index];
+//             //     const auto & filter = filters[query_index_hash.first];
+//             //     const ColumnPtr & hash_column = query_index_hash.second;
+
+//             //     match_rows = maybeTrueOnSuccinctRangeFilter(&*hash_column,
+//             //                                         filter,
+//             //                                         hash_functions,
+//             //                                         match_all);
+//             // }
+
+//             // rpn_stack.emplace_back(match_rows, true);
+//             // if (element.function == RPNElement::FUNCTION_NOT_EQUALS || element.function == RPNElement::FUNCTION_NOT_IN)
+//             //     rpn_stack.back() = !rpn_stack.back();
+
+//         }
+//         else if (element.function == RPNElement::FUNCTION_NOT)
+//         {
+//             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_NOT ------------------------------------------------------ ");
+
+// //            rpn_stack.back() = !rpn_stack.back();
+//         }
+//         else if (element.function == RPNElement::FUNCTION_OR)
+//         {
+//             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_OR ------------------------------------------------------ ");
+
+//             // auto arg1 = rpn_stack.back();
+//             // rpn_stack.pop_back();
+//             // auto arg2 = rpn_stack.back();
+//             // rpn_stack.back() = arg1 | arg2;
+//         }
+//         else if (element.function == RPNElement::FUNCTION_AND)
+//         {
+//             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ FUNCTION_AND ------------------------------------------------------ ");
+
+//             auto arg1 = rpn_stack.back();
+//             rpn_stack.pop_back();
+//             auto arg2 = rpn_stack.back();
+//             rpn_stack.back() = arg1 & arg2;
+//         }
+//         else if (element.function == RPNElement::ALWAYS_TRUE)
+//         {
+//             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_TRUE ------------------------------------------------------ ");
+
+//             // rpn_stack.emplace_back(true, false);
+//         }
+//         else if (element.function == RPNElement::ALWAYS_FALSE)
+//         {
+//             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), " ------------------------------------------------------ ALWAYS_FALSE ------------------------------------------------------ ");
+
+//             //rpn_stack.emplace_back(false, true);
+//         }
+//         else
+//             throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected function type in KeyCondition::RPNElement");
+//     }
+
+//     if (rpn_stack.size() != 1)
+//         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected stack size in KeyCondition::mayBeTrueInRange");
+
+//     return rpn_stack[0].can_be_true;
 }
 
 bool MergeTreeIndexConditionSuccinctRangeFilter::extractAtomFromTree(const RPNBuilderTreeNode & node, RPNElement & out)

@@ -340,7 +340,10 @@ bool MergeTreeIndexConditionBloomFilter::mayBeTrueOnGranule(const MergeTreeIndex
     if (rpn_stack.size() != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected stack size in KeyCondition::mayBeTrueInRange");
 
-    return rpn_stack[0].can_be_true;
+    auto res = rpn_stack[0].can_be_true;
+    LOG_DEBUG(getLogger("MergeTreeIndexBloomFilter"), "mayBeTrueOnGranule {}", res);
+
+    return res;
 }
 
 bool MergeTreeIndexConditionBloomFilter::extractAtomFromTree(const RPNBuilderTreeNode & node, RPNElement & out)

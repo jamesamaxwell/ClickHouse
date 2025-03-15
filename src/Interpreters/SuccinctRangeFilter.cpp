@@ -1019,6 +1019,11 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
 
                 if (new_backtrack)
                 { // select1(S-HasChild, rank1(S-LOUDS, pos) - 1);
+                    if (level == 0)
+                    {
+                        iter.valid = false;
+                        return iter;
+                    }
                     backtrack = true;
                     level--;
                     iter.currentLevel = level;
@@ -1145,6 +1150,11 @@ Iterator SuccinctRangeFilter::LowerBound(const std::string & key) const
                     }
                     else
                     {
+                        if (level == 0)
+                        {
+                            iter.valid = false;
+                            return iter;
+                        }
                         level--;
                         LOG_DEBUG(getLogger("SuccinctRangeFilter"), "backtrack from: {}", iter.sparsePos);
                         iter.sparsePos = select1(surf.sparse.s_hasChild, rank1(surf.sparse.s_LOUDS, iter.sparsePos) - 1);
