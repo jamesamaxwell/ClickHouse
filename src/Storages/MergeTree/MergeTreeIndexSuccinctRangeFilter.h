@@ -22,8 +22,6 @@ public:
 
     MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, size_t num_columns_);
 
-    // MergeTreeIndexGranuleSuccinctRangeFilter(size_t ds_ratio_, const std::vector<HashSet<UInt64>> & column_hashes);
-
     bool empty() const override;
 
     size_t findLargestDepth(const std::unique_ptr<TrieNode> & root, size_t ratio); // Maybe move these to SuccinctRangeFilter.h
