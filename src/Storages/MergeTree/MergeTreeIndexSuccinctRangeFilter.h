@@ -153,15 +153,6 @@ private:
     size_t ds_ratio;
     const Names index_columns_name;
 
-    // size_t num_columns;
-    // size_t dense_depth;
-
-    // size_t dense_nodes = 0;
-    // size_t d_values = 0;
-
-    // size_t sparse_nodes = 0;
-    // size_t s_values = 0;
-
     TrieNode root;
     size_t total_rows = 0;
 };
