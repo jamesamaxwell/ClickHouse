@@ -13,14 +13,6 @@
 
 namespace DB
 {
-// struct SuccinctRangeFilterParameters
-// {
-//     SuccinctRangeFilterParameters(size_t ds_ratio);
-
-//     /// LOUDS-DENSE to LOUDS-SPARSE size ratio, i.e. LOUDS_DENSE_size * ds_ratio = LOUDS_SPARSE_size. 64 by default
-//     size_t ds_ratio;
-
-// };
 
 struct TrieNode
 {
@@ -116,8 +108,5 @@ public:
 };
 
 using SuccinctRangeFilterPtr = std::shared_ptr<SuccinctRangeFilter>;
-
-//bool operator== (const SuccinctRangeFilter & a, const SuccinctRangeFilter & b);
-
 
 }
