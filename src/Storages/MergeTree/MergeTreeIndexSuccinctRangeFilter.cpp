@@ -1186,23 +1186,6 @@ void MergeTreeIndexAggregatorSuccinctRangeFilter::update(const Block & block, si
     {
         const auto & column_and_type = block.getByName(index_columns_name[column]);
 
-        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column name {}", index_columns_name[column]);
-        // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "column type {}", column_and_type.type->getName());
-
-        // for (size_t i = *pos; i < *pos + 2; ++i)
-        // {
-        //     Field res;
-        //     column_and_type.column->get(i, res);
-        //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "start {} size {}", toString(res), toString(res).size());
-        // }
-        // for (size_t i = *pos + max_read_rows - 1; i < *pos + max_read_rows + 1; ++i)
-        // {
-        //     Field res;
-        //     column_and_type.column->get(i, res);
-        //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "end {} size {}", toString(res), toString(res).size());
-        // }
-
-        // TrieNode node = root;
         for (size_t i = *pos; i < *pos + max_read_rows; ++i)
         {
             Field res;
