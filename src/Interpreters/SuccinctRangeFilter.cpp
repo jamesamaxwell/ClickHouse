@@ -18,14 +18,6 @@ namespace ErrorCodes
     extern const int BAD_ARGUMENTS;
 }
 
-// Builds the LOUDS-DS structure from a trie.
-// void buildLOUDSDS(std::unique_ptr<TrieNode> & root, size_t l_depth) {
-//     // Here, you would traverse the trie and fill in surf.dense and surf.sparse.
-//     // Also, compute l_depth using the ratio R (default R=64) as described.
-//     l_depth = l_depth;
-//     // For illustration, we leave this unimplemented.
-// }
-
 // Returns the number of 1 bits in the bit sequence bs[0, pos).
 size_t rank1(const std::vector<bool> & bs, size_t pos)
 {
@@ -572,15 +564,6 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
             c = kv.first;
             TrieNode * child_ptr = kv.second.get();
 
-            // // We only set bits if the child's BFS node is also in dense_nodes
-            // // (meaning it is depth < l_depth).
-            // // We check if child_ptr is in the BFS portion for dense:
-            // // (In a real design, you'd need a map from child_ptr->dense_index or something.)
-            // // For simplicity, let's do a quick check:
-            // auto it = std::find(dense_nodes.begin(), dense_nodes.end(), child_ptr);
-            // if (it != dense_nodes.end())
-            // {
-            // Mark label c
             surf.dense.d_labels[i].set(static_cast<unsigned char>(c));
             // LOG_DEBUG(getLogger("SuccinctRangeFilter"), "set d_labels: {} {}", i, c);
 
@@ -589,29 +572,7 @@ SuccinctRangeFilter::SuccinctRangeFilter(std::unique_ptr<TrieNode> root, size_t 
             {
                 surf.dense.d_hasChild[i].set(static_cast<unsigned char>(c));
             }
-            // else
-            // {
-
-            //     surf.dense.d_values.push_back(static_cast<uint64_t>(c));
-            // }
-            
-            // }
-            // else
-            // {
-            //     // This child is in the sparse part => from the perspective of the dense node,
-            //     // we treat it as if it doesn't continue with children (hasChild=0).
-            //     // Optionally, you might treat it as a "terminal" here or store a pointer offset.
-            //     surf.dense.d_labels[i].set(static_cast<unsigned char>(c));
-            //     // no set on d_hasChild => remains false
-            // }
         }
-
-        // If you want to store a d_value for terminal nodes:
-        // if (node->is_terminal)
-        // {
-        //     // Just push back an ID
-        //     surf.dense.d_values.push_back(static_cast<uint64_t>(c));
-        // }
     }
 
     // ------------------------------------------------------------
