@@ -68,51 +68,9 @@ MergeTreeIndexGranuleSuccinctRangeFilter::MergeTreeIndexGranuleSuccinctRangeFilt
     : ds_ratio(ds_ratio_), total_rows(total_rows_)
 {
     num_columns = 1;
-    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter {}", root.is_terminal);
-
-    // if (root.children.size() == 0)
-    // {
-    //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "root has no children");
-    // }
-    // else
-    // {
-    //     for (auto & child : root.children)
-    //     {
-    //         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter root child {}", child.first);
-    //     }
-    //     for (auto & child : root.children)
-    //     {
-    //         for (auto & grandchild : child.second->children)
-    //         {
-    //             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter root grandchild {}", grandchild.first);
-    //         }
-    //     }
-    // }
-
+    
     // Filter superfluous nodes in the trie
     auto [pruned_root, total_terminals] = pruneSubtree(root);
-    // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "trie pruned {}", total_terminals);
-
-    // if (pruned_root == nullptr)
-    // {
-    //     LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "pruned_root is null");
-    // }
-    // else
-    // {
-    //     for (auto & child : pruned_root->children)
-    //     {
-    //         LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter pruned child {}", child.first);
-
-    //     }
-    //     for (auto & child : pruned_root->children)
-    //     {
-    //         for (auto & grandchild : child.second->children)
-    //         {
-    //             LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "MergeTreeIndexGranuleSuccinctRangeFilter pruned grandchild {}", grandchild.first);
-    //         }
-    //     }
-    // }
-
     size_t l_depth = findLargestDepth(pruned_root, ds_ratio);
     // LOG_DEBUG(getLogger("MergeTreeIndexSuccinctRangeFilter"), "LOUDS_DENSE depth {}", l_depth);
 
